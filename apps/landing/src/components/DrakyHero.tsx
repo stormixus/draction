@@ -110,7 +110,7 @@ export default function DrakyHero() {
                     style={{
                         width: 256,
                         height: 256,
-                        backgroundImage: "url(/sprites/draky-sheet.png)",
+                        backgroundImage: `url(${import.meta.env.BASE_URL}sprites/draky-sheet.png)`,
                         backgroundSize: `${COLS * 100}% ${ROWS * 100}%`,
                         backgroundPosition: `${bgPosX}% ${bgPosY}%`,
                         backgroundRepeat: "no-repeat",
