@@ -39,7 +39,7 @@ jobs:
         run: pnpm install
 
       - name: Build Astro
-        run: pnpm --filter landing build
+        run: pnpm --filter apps-landing build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
