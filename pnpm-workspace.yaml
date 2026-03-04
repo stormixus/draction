@@ -1,0 +1,4 @@
+packages:
+  - "apps/draction-desktop"
+  - "apps/openclaw-bridge"
+  - "packages/*"

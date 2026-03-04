@@ -1,0 +1,12 @@
+[package]
+name = "draction-inbox"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+draction-domain = { path = "../draction-domain" }
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+sha2.workspace = true
+chrono.workspace = true

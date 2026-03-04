@@ -1,0 +1,12 @@
+{
+  "name": "draction",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm -F draction-desktop dev",
+    "build": "pnpm -F draction-desktop build",
+    "tauri": "pnpm -F draction-desktop tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1"
+  }
+}

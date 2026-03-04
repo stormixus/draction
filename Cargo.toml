@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+  "apps/draction-desktop/src-tauri",
+  "crates/draction-domain",
+  "crates/draction-db",
+  "crates/draction-events",
+  "crates/draction-inbox",
+  "crates/draction-engine",
+  "crates/draction-api",
+  "crates/draction-lifecycle",
+]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+async-trait = "0.1"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"

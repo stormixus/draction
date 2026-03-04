@@ -1,0 +1,26 @@
+@import "tailwindcss";
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: "Outfit", system-ui, sans-serif;
+  --color-turquoise-100: #ccfbf1;
+  --color-turquoise-300: #5eead4;
+  --color-turquoise-400: #2dd4bf;
+  --color-turquoise-500: #14b8a6;
+  --color-sky-100: #e0f2fe;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #f8fafc;
+  overflow-x: hidden;
+}
+
+.dark body {
+  background-color: #0f172a;
+  /* slate-900 */
+}

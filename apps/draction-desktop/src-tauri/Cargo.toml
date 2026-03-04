@@ -1,0 +1,34 @@
+[package]
+name = "draction-desktop"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "draction_desktop_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "draction-desktop"
+path = "src/main.rs"
+
+[dependencies]
+draction-domain = { path = "../../../crates/draction-domain" }
+draction-db = { path = "../../../crates/draction-db" }
+draction-events = { path = "../../../crates/draction-events" }
+draction-inbox = { path = "../../../crates/draction-inbox" }
+draction-engine = { path = "../../../crates/draction-engine" }
+draction-api = { path = "../../../crates/draction-api" }
+draction-lifecycle = { path = "../../../crates/draction-lifecycle" }
+tauri = { version = "2", features = ["macos-private-api"] }
+tauri-build = { version = "2", features = [] }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+dirs = "6"
+chrono.workspace = true
+anyhow.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
