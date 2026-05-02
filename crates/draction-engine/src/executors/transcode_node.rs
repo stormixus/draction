@@ -88,3 +88,47 @@ impl NodeExecutor for TranscodeNode {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kind_returns_transcode() {
+        assert_eq!(TranscodeNode.kind(), "transcode");
+    }
+
+    #[test]
+    fn h265_1080p_preset_returns_libx265_codec_chain() {
+        let args = ffmpeg_args_for_preset("h265_1080p").unwrap();
+        assert!(args.contains(&"libx265"), "preset must use libx265 codec");
+        assert!(args.contains(&"scale=-2:1080"), "preset must scale to 1080p");
+        assert!(args.contains(&"aac"), "preset must transcode audio to aac");
+        // -crf with a value
+        let crf_idx = args.iter().position(|a| *a == "-crf").expect("missing -crf flag");
+        assert!(crf_idx + 1 < args.len(), "-crf must be followed by a value");
+    }
+
+    #[test]
+    fn unknown_preset_errors_with_preset_name_in_message() {
+        let err = ffmpeg_args_for_preset("h264_potato").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("unknown preset"));
+        assert!(msg.contains("h264_potato"));
+    }
+
+    #[test]
+    fn ffmpeg_args_are_pairs_of_flag_and_value() {
+        // Sanity: every -* flag should have a non-flag value following it
+        let args = ffmpeg_args_for_preset("h265_1080p").unwrap();
+        let mut i = 0;
+        while i < args.len() {
+            if args[i].starts_with('-') {
+                assert!(i + 1 < args.len(), "flag {} has no value", args[i]);
+                i += 2;
+            } else {
+                i += 1;
+            }
+        }
+    }
+}

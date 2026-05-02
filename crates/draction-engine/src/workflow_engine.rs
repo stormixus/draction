@@ -69,3 +69,151 @@ fn topo_sort(wf: &Workflow) -> Result<Vec<&draction_domain::workflow::WorkflowNo
     }
     Ok(ordered)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::node_registry::{NodeContext, NodeExecutor, NodeOutput};
+    use async_trait::async_trait;
+    use draction_domain::workflow::{Edge, WorkflowNode};
+    use serde_json::{json, Value};
+    use std::sync::{Arc, Mutex};
+
+    struct RecordingNode {
+        kind: &'static str,
+        log: Arc<Mutex<Vec<String>>>,
+        fail: bool,
+    }
+
+    #[async_trait]
+    impl NodeExecutor for RecordingNode {
+        fn kind(&self) -> &'static str {
+            self.kind
+        }
+        async fn execute(&self, ctx: &NodeContext, _params: Value) -> Result<NodeOutput> {
+            self.log.lock().unwrap().push(format!("{}:{}", self.kind, ctx.run_id));
+            if self.fail {
+                anyhow::bail!("RecordingNode '{}' configured to fail", self.kind);
+            }
+            Ok(NodeOutput { artifacts: vec![] })
+        }
+    }
+
+    fn node(id: &str, kind: &str) -> WorkflowNode {
+        WorkflowNode {
+            id: id.into(),
+            node_type: kind.into(),
+            params: json!({}),
+        }
+    }
+
+    fn edge(from: &str, to: &str) -> Edge {
+        Edge { from: from.into(), to: to.into() }
+    }
+
+    #[test]
+    fn topo_sort_returns_empty_for_workflow_with_no_nodes() {
+        let wf = Workflow {
+            id: "w".into(),
+            name: "w".into(),
+            nodes: vec![],
+            edges: vec![],
+        };
+        assert!(topo_sort(&wf).unwrap().is_empty());
+    }
+
+    #[test]
+    fn topo_sort_orders_linear_chain_by_edges() {
+        // n3 -> n1 -> n2, with nodes listed in scrambled order
+        let wf = Workflow {
+            id: "w".into(),
+            name: "w".into(),
+            nodes: vec![node("n2", "k"), node("n1", "k"), node("n3", "k")],
+            edges: vec![edge("n3", "n1"), edge("n1", "n2")],
+        };
+        let order: Vec<&str> = topo_sort(&wf).unwrap().iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(order, vec!["n3", "n1", "n2"]);
+    }
+
+    #[test]
+    fn topo_sort_returns_single_node_when_no_edges() {
+        let wf = Workflow {
+            id: "w".into(),
+            name: "w".into(),
+            nodes: vec![node("only", "k")],
+            edges: vec![],
+        };
+        let order: Vec<&str> = topo_sort(&wf).unwrap().iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(order, vec!["only"]);
+    }
+
+    #[test]
+    fn topo_sort_errors_when_edge_points_to_unknown_node() {
+        let wf = Workflow {
+            id: "w".into(),
+            name: "w".into(),
+            nodes: vec![node("n1", "k")],
+            edges: vec![edge("n1", "ghost")],
+        };
+        let err = topo_sort(&wf).unwrap_err();
+        assert!(err.to_string().contains("ghost"));
+    }
+
+    #[tokio::test]
+    async fn execute_runs_nodes_in_topological_order() {
+        let log = Arc::new(Mutex::new(Vec::<String>::new()));
+        let mut reg = NodeRegistry::new();
+        reg.register(Box::new(RecordingNode { kind: "first", log: log.clone(), fail: false }));
+        reg.register(Box::new(RecordingNode { kind: "second", log: log.clone(), fail: false }));
+        let engine = WorkflowEngine::new(reg);
+
+        let wf = Workflow {
+            id: "wf".into(),
+            name: "wf".into(),
+            nodes: vec![node("n1", "first"), node("n2", "second")],
+            edges: vec![edge("n1", "n2")],
+        };
+
+        engine.execute("run-1", "evt-1", &wf, "/tmp/work").await.unwrap();
+        let log = log.lock().unwrap().clone();
+        assert_eq!(log, vec!["first:run-1", "second:run-1"]);
+    }
+
+    #[tokio::test]
+    async fn execute_fails_fast_and_skips_remaining_nodes() {
+        let log = Arc::new(Mutex::new(Vec::<String>::new()));
+        let mut reg = NodeRegistry::new();
+        reg.register(Box::new(RecordingNode { kind: "ok", log: log.clone(), fail: false }));
+        reg.register(Box::new(RecordingNode { kind: "boom", log: log.clone(), fail: true }));
+        reg.register(Box::new(RecordingNode { kind: "after", log: log.clone(), fail: false }));
+        let engine = WorkflowEngine::new(reg);
+
+        let wf = Workflow {
+            id: "wf".into(),
+            name: "wf".into(),
+            nodes: vec![node("a", "ok"), node("b", "boom"), node("c", "after")],
+            edges: vec![edge("a", "b"), edge("b", "c")],
+        };
+
+        let err = engine.execute("r", "e", &wf, "/tmp").await.unwrap_err();
+        assert!(err.to_string().contains("boom"));
+
+        // The third node must NOT have been invoked
+        let log = log.lock().unwrap().clone();
+        assert_eq!(log, vec!["ok:r", "boom:r"]);
+    }
+
+    #[tokio::test]
+    async fn execute_unknown_node_type_returns_err() {
+        let reg = NodeRegistry::new();
+        let engine = WorkflowEngine::new(reg);
+        let wf = Workflow {
+            id: "w".into(),
+            name: "w".into(),
+            nodes: vec![node("n1", "missing_type")],
+            edges: vec![],
+        };
+        let err = engine.execute("r", "e", &wf, "/tmp").await.unwrap_err();
+        assert!(err.to_string().contains("unknown node type"));
+    }
+}
