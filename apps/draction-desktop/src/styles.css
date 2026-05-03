@@ -1,1 +1,114 @@
 @import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --color-bg: var(--ui-bg);
+  --color-surface: var(--ui-surface);
+  --color-surface-2: var(--ui-surface-2);
+  --color-border: var(--ui-border);
+  --color-border-strong: var(--ui-border-strong);
+  --color-text: var(--ui-text);
+  --color-text-muted: var(--ui-text-muted);
+  --color-text-subtle: var(--ui-text-subtle);
+  --color-accent: var(--ui-accent);
+  --color-accent-fg: var(--ui-accent-fg);
+  --color-success: var(--ui-success);
+  --color-warning: var(--ui-warning);
+  --color-danger: var(--ui-danger);
+  --color-info: var(--ui-info);
+  --color-focus: var(--ui-focus);
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / .14), 0 16px 40px rgb(0 0 0 / .22);
+  --shadow-float: 0 10px 30px rgb(0 0 0 / .28);
+
+  --ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(.2, 0, 0, 1);
+}
+
+/*
+ * Phase A: dark theme stays the visual default to preserve current look.
+ * `:root` ships dark tokens directly mapped to today's zinc/emerald palette.
+ * `[data-theme="light"]` carries the Soft-Pro light palette for Phase C swap.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces — mirrored from current zinc usage */
+  --ui-bg:             #09090b;
+  --ui-surface:        #18181b;
+  --ui-surface-2:      #27272a;
+  --ui-border:         #27272a;
+  --ui-border-strong:  #3f3f46;
+
+  /* Text */
+  --ui-text:           #f4f4f5;
+  --ui-text-muted:     #a1a1aa;
+  --ui-text-subtle:    #71717a;
+
+  /* Brand + status */
+  --ui-accent:         #34d399;
+  --ui-accent-fg:      #042f2e;
+  --ui-success:        #34d399;
+  --ui-warning:        #fbbf24;
+  --ui-danger:         #f87171;
+  --ui-info:           #60a5fa;
+  --ui-focus:          #34d399;
+
+  /* Motion */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 260ms;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Soft-Pro palette skeleton (Phase C polish) */
+  --ui-bg:             #fdfcfb;
+  --ui-surface:        #ffffff;
+  --ui-surface-2:      #f5f5f4;
+  --ui-border:         #e7e5e4;
+  --ui-border-strong:  #d6d3d1;
+
+  --ui-text:           #1c1917;
+  --ui-text-muted:     #57534e;
+  --ui-text-subtle:    #78716c;
+
+  --ui-accent:         #a78bfa;
+  --ui-accent-fg:      #ffffff;
+  --ui-success:        #34d399;
+  --ui-warning:        #f59e0b;
+  --ui-danger:         #fb7185;
+  --ui-info:           #60a5fa;
+  --ui-focus:          #a78bfa;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

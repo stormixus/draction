@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -76,7 +76,6 @@ function OverlayApp() {
   const [spriteIndex, setSpriteIndex] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ name: string; percent: number } | null>(null);
-  const animRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const unlistenPromise = listen<IngestProgress>("ingest-progress", (event) => {
@@ -194,7 +193,7 @@ function OverlayApp() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 0.6 }}
         >
-          <div className="h-60 w-60 animate-spin rounded-full border-4 border-transparent border-t-emerald-400" />
+          <div className="h-60 w-60 animate-spin rounded-full border-4 border-transparent border-t-accent" />
         </motion.div>
       )}
 
@@ -204,7 +203,7 @@ function OverlayApp() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         >
-          <div className="text-xs font-medium text-emerald-400">
+          <div className="text-xs font-medium text-accent">
             {Math.round(progress.percent)}%
           </div>
         </motion.div>
@@ -212,11 +211,10 @@ function OverlayApp() {
 
       {toast && (
         <motion.div
-          className="pointer-events-auto absolute bottom-2 left-1/2 max-w-[280px] -translate-x-1/2 rounded-lg px-3 py-2 text-center text-xs font-medium shadow-lg"
-          style={{
-            background: state === "error" ? "rgba(239,68,68,0.9)" : "rgba(16,185,129,0.9)",
-            color: "white",
-          }}
+          className={
+            "pointer-events-auto absolute bottom-2 left-1/2 max-w-[280px] -translate-x-1/2 rounded-lg px-3 py-2 text-center text-xs font-medium text-white shadow-[var(--shadow-float)] " +
+            (state === "error" ? "bg-danger/90" : "bg-success/90")
+          }
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
@@ -224,8 +222,7 @@ function OverlayApp() {
           <div>{toast}</div>
           <button
             onClick={openMainWindow}
-            className="mt-1 underline opacity-80 hover:opacity-100"
-            style={{ cursor: "pointer", background: "none", border: "none", color: "inherit", fontSize: "inherit" }}
+            className="mt-1 cursor-pointer border-none bg-transparent text-inherit underline opacity-80 hover:opacity-100"
           >
             자세히
           </button>
