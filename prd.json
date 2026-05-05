@@ -1,0 +1,199 @@
+{
+  "version": "1.0",
+  "task": "Draction Advancement - Phase 1 through Phase 3",
+  "stories": [
+    {
+      "id": "US-1.1",
+      "title": "Wire Auth Middleware into Router",
+      "phase": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "curl localhost:9400/api/v1/rules returns 401 with UNAUTHORIZED error",
+        "curl with valid Bearer token returns 200 with rule list",
+        "GET /health returns 200 without auth",
+        "WebSocket /ws requires auth (token query param)"
+      ]
+    },
+    {
+      "id": "US-1.2",
+      "title": "Unify Tauri to Use draction-app-core",
+      "phase": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "cargo build -p draction-desktop compiles without error",
+        "DractionRuntime has public event_bus, db, undo_stack, api_port fields",
+        "DractionRuntime has bootstrap_with_base(PathBuf) constructor",
+        "ingest_paths accepts optional ProgressSender",
+        "ingest_paths pushes UndoEntry after each file ingest",
+        "Tauri ingest.rs is a thin wrapper (no duplicated functions)",
+        "draction-native compiles and uses ingest_paths with progress: None",
+        "One event_id per file (not per batch)"
+      ]
+    },
+    {
+      "id": "US-1.3",
+      "title": "Wire Undo HTTP Endpoint to Real UndoStack",
+      "phase": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "POST /api/v1/events/{id}/undo returns 200 when undo entry exists within 10s TTL",
+        "Returns 404 when event has no undo entry or expired",
+        "File is actually moved back/reverted on disk",
+        "AppState has undo_stack: Arc<Mutex<UndoStack>> field"
+      ]
+    },
+    {
+      "id": "US-1.4",
+      "title": "Call Crash Recovery in Tauri Startup",
+      "phase": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Tauri lib.rs calls crash recovery during startup",
+        "draction-app-core bootstrap also calls crash recovery"
+      ]
+    },
+    {
+      "id": "US-1.5",
+      "title": "Add Integration Smoke Test",
+      "phase": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "cargo test -p draction-api --test api_integration_test passes",
+        "Test covers health, auth-gated rules, and basic ingest",
+        "Test uses bootstrap_with_base with temp directory",
+        "Test does NOT touch ~/Draction/"
+      ]
+    },
+    {
+      "id": "US-2.1",
+      "title": "Implement Settings Backend (Rust)",
+      "phase": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "GET /api/v1/settings returns full settings with defaults on fresh install",
+        "PUT /api/v1/settings with partial body updates only those fields",
+        "Settings persist across restarts (JSON file)",
+        "Invalid values return 422"
+      ]
+    },
+    {
+      "id": "US-2.2",
+      "title": "Wire Settings UI to Backend",
+      "phase": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "All 8 panes show real persisted values, not hardcoded defaults",
+        "Toggle/select/input changes immediately persist via API",
+        "Theme changes persist and apply visually",
+        "No hardcoded defaults remain in any pane component"
+      ]
+    },
+    {
+      "id": "US-2.3",
+      "title": "Implement Watch Folder Source Kind",
+      "phase": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Files dropped into watched folder trigger full ingest pipeline",
+        "Events show source_kind: watch_folder",
+        "Debouncing prevents duplicate ingestion",
+        "POST /api/v1/watcher/start and /stop endpoints work"
+      ]
+    },
+    {
+      "id": "US-2.4",
+      "title": "Multi-Preset Transcoding",
+      "phase": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "h264_720p preset transcodes correctly",
+        "h265_4k preset transcodes correctly",
+        "audio_only preset extracts audio",
+        "Invalid preset name returns clear error"
+      ]
+    },
+    {
+      "id": "US-2.5",
+      "title": "Implement Real Retry for Failed Runs",
+      "phase": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "POST /api/v1/runs/{id}/retry re-executes workflow (returns 200, not 501)",
+        "Returns 400 if run not in failed status",
+        "Returns 404 if run not found",
+        "EventBus emits RUN_STARTED/FINISHED/FAILED for retry"
+      ]
+    },
+    {
+      "id": "US-2.6",
+      "title": "Implement Real Graceful Shutdown",
+      "phase": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Shutdown waits for active runs (up to 30s)",
+        "Lock file removed on clean shutdown",
+        "Timeout path logs stuck run IDs before force-exit"
+      ]
+    },
+    {
+      "id": "US-3.1",
+      "title": "E2E Test Suite",
+      "phase": 3,
+      "passes": false,
+      "acceptanceCriteria": [
+        "pnpm test:e2e runs all E2E tests",
+        "Tests cover drag-drop pipeline end-to-end",
+        "Tests cover settings persistence across restart"
+      ]
+    },
+    {
+      "id": "US-3.2",
+      "title": "Concurrent File Processing",
+      "phase": 3,
+      "passes": true,
+      "acceptanceCriteria": [
+        "With concurrency=4, 4 files process in parallel",
+        "SQLite no database locked errors",
+        "Progress events correct per file",
+        "Undo stack handles concurrent pushes"
+      ]
+    },
+    {
+      "id": "US-3.3",
+      "title": "Workflow Engine v2.0",
+      "phase": 3,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Sequential edges execute in order",
+        "Fan-out edges execute nodes in parallel",
+        "Cyclic workflows rejected at creation",
+        "Existing linear workflows (empty edges) still work"
+      ]
+    },
+    {
+      "id": "US-3.4",
+      "title": "Draky Character Integration",
+      "phase": 3,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Drop shows curious state",
+        "Success shows happy then proud",
+        "Failure shows sad with copy text",
+        "Idle 5+ min enters sleeping",
+        "All transitions animated smoothly"
+      ]
+    },
+    {
+      "id": "US-3.5",
+      "title": "Performance and Polish",
+      "phase": 3,
+      "passes": false,
+      "acceptanceCriteria": [
+        "No std::fs calls inside async functions",
+        "Event log supports pagination",
+        "Files exceeding max size are rejected with clear message",
+        "Keyboard shortcuts work (Cmd+, Cmd+Shift+D)"
+      ]
+    }
+  ]
+}

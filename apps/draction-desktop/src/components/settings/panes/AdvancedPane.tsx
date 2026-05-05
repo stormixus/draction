@@ -4,8 +4,22 @@ import { Section } from "../Section";
 import { Input } from "../Input";
 import { Select } from "../Select";
 import { Btn } from "../Btn";
+import { useSettingsStore } from "../../../stores/settingsStore";
+
+const LOG_LEVEL_OPTIONS = [
+  { value: "trace", label: "trace" },
+  { value: "debug", label: "debug" },
+  { value: "info", label: "info" },
+  { value: "warn", label: "warn" },
+  { value: "error", label: "error" },
+];
 
 export function AdvancedPane() {
+  const settings = useSettingsStore((s) => s.settings);
+  const updateSetting = useSettingsStore((s) => s.updateSetting);
+
+  if (!settings) return null;
+
   return (
     <>
       <PaneHeader title="Advanced" sub="For power users — most folks should leave these alone." />
@@ -13,7 +27,7 @@ export function AdvancedPane() {
       <Section title="Storage">
         <Row label="Database" hint="Events, runs and audit trail.">
           <div className="flex items-center gap-2">
-            <Input value="~/Draction/draction.db" mono width={240} />
+            <Input value={settings.db_path} mono width={240} />
             <Btn>Reveal</Btn>
           </div>
         </Row>
@@ -27,10 +41,17 @@ export function AdvancedPane() {
 
       <Section title="Logs">
         <Row label="Log level">
-          <Select value="info" />
+          <Select
+            value={settings.log_level}
+            options={LOG_LEVEL_OPTIONS}
+            onChange={(v) => updateSetting("log_level", v)}
+          />
         </Row>
         <Row label="Persist logs">
-          <Select value="14 days" />
+          <Select
+            value="14_days"
+            options={[{ value: "14_days", label: "14 days" }]}
+          />
         </Row>
         <Row label="Open log folder" last>
           <Btn>Open</Btn>

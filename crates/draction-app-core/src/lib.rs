@@ -8,19 +8,27 @@ use draction_domain::workflow::{Workflow, WorkflowNode};
 use draction_engine::rule_engine::{self, EvalCtx};
 use draction_engine::workflow_engine::WorkflowEngine;
 use draction_events::{Envelope, EventBus};
+use draction_inbox::undo::{UndoEntry, UndoStack};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+pub mod watcher;
+
+const LARGE_FILE_THRESHOLD: u64 = 100 * 1024 * 1024; // 100 MB
+const CHUNK_SIZE: usize = 1024 * 1024; // 1 MB
 
 #[derive(Clone)]
 pub struct DractionRuntime {
     pub base_dir: PathBuf,
     pub api_port: u16,
-    db: Arc<DractionDb>,
-    event_bus: Arc<EventBus>,
+    pub db: Arc<DractionDb>,
+    pub event_bus: Arc<EventBus>,
+    pub undo_stack: Arc<Mutex<UndoStack>>,
+    pub auth_token: String,
 }
 
 impl fmt::Debug for DractionRuntime {
@@ -40,6 +48,16 @@ pub struct IngestResult {
     pub sha256: String,
     pub action: Option<String>,
 }
+
+#[derive(Debug, Clone)]
+pub struct IngestProgress {
+    pub file_name: String,
+    pub bytes_copied: u64,
+    pub total_bytes: u64,
+    pub percent: f64,
+}
+
+pub type ProgressSender = tokio::sync::mpsc::UnboundedSender<IngestProgress>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunSummary {
@@ -66,7 +84,10 @@ pub struct RuleSummary {
 impl DractionRuntime {
     pub async fn bootstrap() -> Result<Self> {
         let home = dirs::home_dir().context("Cannot find home directory")?;
-        let base_dir = home.join("Draction");
+        Self::bootstrap_with_base(home.join("Draction")).await
+    }
+
+    pub async fn bootstrap_with_base(base_dir: PathBuf) -> Result<Self> {
         tokio::fs::create_dir_all(&base_dir)
             .await
             .with_context(|| format!("Create {}", base_dir.display()))?;
@@ -80,23 +101,46 @@ impl DractionRuntime {
 
         let auth_token = draction_api::auth::load_or_create_token(&base_dir)?;
         let event_bus = Arc::new(EventBus::new(256));
+        let undo_stack = Arc::new(Mutex::new(UndoStack::new()));
+        // Channel bridge: watcher handlers send paths here, runtime consumes them
+        let (watcher_tx, mut watcher_rx) =
+            tokio::sync::mpsc::unbounded_channel::<Vec<PathBuf>>();
+
         let state = AppState {
             db: db.clone(),
             base_dir: base_dir.clone(),
-            auth_token,
+            auth_token: auth_token.clone(),
             event_bus: event_bus.clone(),
+            undo_stack: undo_stack.clone(),
+            watcher_flag: Arc::new(Mutex::new(None)),
+            watcher_tx: Arc::new(Mutex::new(Some(watcher_tx))),
         };
+
         let api_port = draction_api::start_server(9400, state).await?;
 
-        ensure_rules(&base_dir)?;
-        ensure_workflows(&base_dir)?;
-
-        Ok(Self {
+        // Build runtime and spawn the watcher path consumer
+        let runtime = Self {
             base_dir,
             api_port,
             db,
             event_bus,
-        })
+            undo_stack,
+            auth_token,
+        };
+
+        let consumer_runtime = runtime.clone();
+        tokio::spawn(async move {
+            while let Some(paths) = watcher_rx.recv().await {
+                if let Err(e) = consumer_runtime.ingest_paths(paths, None).await {
+                    tracing::error!("Watch folder ingest failed: {}", e);
+                }
+            }
+        });
+
+        ensure_rules(&runtime.base_dir)?;
+        ensure_workflows(&runtime.base_dir)?;
+
+        Ok(runtime)
     }
 
     pub fn list_runs(&self, limit: u32) -> Result<Vec<RunSummary>> {
@@ -130,11 +174,13 @@ impl DractionRuntime {
             .collect())
     }
 
-    pub async fn ingest_paths(&self, paths: Vec<PathBuf>) -> Result<Vec<IngestResult>> {
+    pub async fn ingest_paths(
+        &self,
+        paths: Vec<PathBuf>,
+        progress: Option<ProgressSender>,
+    ) -> Result<Vec<IngestResult>> {
         let rules = ensure_rules(&self.base_dir)?;
         let workflows = ensure_workflows(&self.base_dir)?;
-        let registry = draction_engine::default_registry();
-        let engine = WorkflowEngine::new(registry);
         let inbox = draction_inbox::ingest::inbox_dir(&self.base_dir);
 
         let mut all_files = Vec::new();
@@ -150,163 +196,280 @@ impl DractionRuntime {
             anyhow::bail!("No files found in the dropped items");
         }
 
-        let mut results = Vec::new();
+        use tokio::task::JoinSet;
+
+        let mut join_set: JoinSet<anyhow::Result<IngestResult>> = JoinSet::new();
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(4));
 
         for src in all_files {
-            let dest = draction_inbox::ingest::ingest_file(&src, &inbox, true)
-                .await
-                .with_context(|| format!("Ingest failed for {}", src.display()))?;
+            let runtime = self.clone();
+            let rules = rules.clone();
+            let workflows = workflows.clone();
+            let inbox = inbox.clone();
+            let sem = semaphore.clone();
+            let progress = progress.clone();
 
-            let sha256 = draction_inbox::file_ops::compute_sha256(&dest).await?;
-            let size = draction_inbox::file_ops::file_size(&dest).await?;
-            let original_name = src
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            let ext = src
-                .extension()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_lowercase();
+            join_set.spawn(async move {
+                let _permit = sem.acquire().await.unwrap();
 
-            let event_id = ids::new_event_id();
-            let occurred_at = Utc::now().to_rfc3339();
-            let files_payload = json!([{
-                "path": dest.to_string_lossy(),
-                "name": original_name,
-                "ext": ext,
-                "sizeBytes": size,
-                "sha256": sha256,
-            }]);
-            let source_payload = json!({
-                "kind": "desktop_drop",
-                "deviceName": std::env::var("HOSTNAME").unwrap_or_else(|_| "localhost".to_string()),
-                "ip": "127.0.0.1",
-            });
+                let original_name = src
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
 
-            self.db.insert_event(
-                &event_id,
-                &occurred_at,
-                &source_payload.to_string(),
-                &files_payload.to_string(),
-            )?;
+                let src_size =
+                    tokio::fs::metadata(&src).await.map(|m| m.len()).unwrap_or(0);
 
-            self.event_bus.emit(Envelope {
-                channel: "events".to_string(),
-                payload: json!({
-                    "type": "EVENT_INGESTED",
-                    "eventId": event_id,
-                    "time": occurred_at,
-                    "source": source_payload,
-                    "files": files_payload,
-                }),
-            });
-
-            let eval_ctx = build_eval_ctx(&original_name, &ext, size);
-            let action_desc: Option<String>;
-
-            if let Some(rule) = rule_engine::match_first_rule(&rules, &eval_ctx) {
-                if let Some(workflow) = workflows.iter().find(|wf| wf.id == rule.then.workflow_id) {
-                    let run_id = ids::new_run_id();
-                    let started_at = Utc::now().to_rfc3339();
-
-                    self.db.insert_run(
-                        &run_id,
-                        &event_id,
-                        &rule.id,
-                        &workflow.id,
-                        "running",
-                        &started_at,
-                    )?;
-
-                    self.event_bus.emit(Envelope {
-                        channel: "events".to_string(),
-                        payload: json!({
-                            "type": "RUN_STARTED",
-                            "runId": run_id,
-                            "eventId": event_id,
-                            "ruleId": rule.id,
-                            "workflowId": workflow.id,
-                            "startedAt": started_at,
-                        }),
-                    });
-
-                    let work_dir = dest.to_string_lossy().to_string();
-                    match engine
-                        .execute(&run_id, &event_id, workflow, &work_dir)
+                // Copy to inbox: use chunked copy for large files, fast path for small
+                let dest = if src_size > LARGE_FILE_THRESHOLD && progress.is_some() {
+                    let file_name = src.file_name().unwrap_or_default();
+                    let dest_path = inbox.join(file_name);
+                    tokio::fs::create_dir_all(&inbox)
                         .await
+                        .with_context(|| format!("Create inbox dir {}", inbox.display()))?;
+                    copy_with_progress(&src, &dest_path, progress.as_ref().unwrap())
+                        .await?;
+                    dest_path
+                } else {
+                    draction_inbox::ingest::ingest_file(&src, &inbox, true)
+                        .await
+                        .with_context(|| format!("Ingest failed for {}", src.display()))?
+                };
+
+                let sha256 = draction_inbox::file_ops::compute_sha256(&dest).await?;
+                let size = draction_inbox::file_ops::file_size(&dest).await?;
+                let ext = src
+                    .extension()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_lowercase();
+
+                let event_id = ids::new_event_id();
+
+                // Push undo entry
+                {
+                    let entry = UndoEntry {
+                        event_id: event_id.clone(),
+                        src_path: src.to_string_lossy().to_string(),
+                        dst_path: dest.to_string_lossy().to_string(),
+                        is_copy: true,
+                        created_at: Utc::now(),
+                    };
+                    if let Ok(mut stack) = runtime.undo_stack.lock() {
+                        stack.push(entry);
+                    }
+                }
+
+                let occurred_at = Utc::now().to_rfc3339();
+                let files_payload = json!([{
+                    "path": dest.to_string_lossy(),
+                    "name": original_name,
+                    "ext": ext,
+                    "sizeBytes": size,
+                    "sha256": sha256,
+                }]);
+                let source_payload = json!({
+                    "kind": "desktop_drop",
+                    "deviceName": std::env::var("HOSTNAME")
+                        .unwrap_or_else(|_| "localhost".to_string()),
+                    "ip": "127.0.0.1",
+                });
+
+                runtime.db.insert_event(
+                    &event_id,
+                    &occurred_at,
+                    &source_payload.to_string(),
+                    &files_payload.to_string(),
+                )?;
+
+                runtime.event_bus.emit(Envelope {
+                    channel: "events".to_string(),
+                    payload: json!({
+                        "type": "EVENT_INGESTED",
+                        "eventId": event_id,
+                        "time": occurred_at,
+                        "source": source_payload,
+                        "files": files_payload,
+                    }),
+                });
+
+                let eval_ctx = build_eval_ctx(&original_name, &ext, size);
+                let action_desc: Option<String>;
+
+                if let Some(rule) =
+                    rule_engine::match_first_rule(&rules, &eval_ctx)
+                {
+                    if let Some(workflow) =
+                        workflows.iter().find(|wf| wf.id == rule.then.workflow_id)
                     {
-                        Ok(()) => {
-                            let summary = format!("{} -> {}", rule.name, workflow.name);
-                            action_desc = Some(summary.clone());
-                            self.db.update_run_status(
-                                &run_id,
-                                "completed",
-                                Some(&Utc::now().to_rfc3339()),
-                                None,
-                                Some("[]"),
-                            )?;
-                            self.event_bus.emit(Envelope {
-                                channel: "events".to_string(),
-                                payload: json!({
-                                    "type": "RUN_FINISHED",
-                                    "runId": run_id,
-                                    "eventId": event_id,
-                                    "ruleId": rule.id,
-                                    "workflowId": workflow.id,
-                                    "summary": summary,
-                                    "artifacts": [],
-                                }),
-                            });
+                        let run_id = ids::new_run_id();
+                        let started_at = Utc::now().to_rfc3339();
+
+                        runtime.db.insert_run(
+                            &run_id,
+                            &event_id,
+                            &rule.id,
+                            &workflow.id,
+                            "running",
+                            &started_at,
+                        )?;
+
+                        runtime.event_bus.emit(Envelope {
+                            channel: "events".to_string(),
+                            payload: json!({
+                                "type": "RUN_STARTED",
+                                "runId": run_id,
+                                "eventId": event_id,
+                                "ruleId": rule.id,
+                                "workflowId": workflow.id,
+                                "startedAt": started_at,
+                            }),
+                        });
+
+                        let registry = draction_engine::default_registry();
+                        let engine = WorkflowEngine::new(registry);
+                        let work_dir = dest.to_string_lossy().to_string();
+                        match engine
+                            .execute(&run_id, &event_id, workflow, &work_dir)
+                            .await
+                        {
+                            Ok(()) => {
+                                let summary =
+                                    format!("{} -> {}", rule.name, workflow.name);
+                                action_desc = Some(summary.clone());
+                                runtime.db.update_run_status(
+                                    &run_id,
+                                    "completed",
+                                    Some(&Utc::now().to_rfc3339()),
+                                    None,
+                                    Some("[]"),
+                                )?;
+                                runtime.event_bus.emit(Envelope {
+                                    channel: "events".to_string(),
+                                    payload: json!({
+                                        "type": "RUN_FINISHED",
+                                        "runId": run_id,
+                                        "eventId": event_id,
+                                        "ruleId": rule.id,
+                                        "workflowId": workflow.id,
+                                        "summary": summary,
+                                        "artifacts": [],
+                                    }),
+                                });
+                            }
+                            Err(error) => {
+                                let error_payload = json!({
+                                    "code": "WORKFLOW_ERROR",
+                                    "message": error.to_string(),
+                                    "retryable": false,
+                                });
+                                action_desc = Some(format!(
+                                    "{} failed: {}",
+                                    rule.name, error
+                                ));
+                                runtime.db.update_run_status(
+                                    &run_id,
+                                    "failed",
+                                    Some(&Utc::now().to_rfc3339()),
+                                    Some(&error_payload.to_string()),
+                                    Some("[]"),
+                                )?;
+                                runtime.event_bus.emit(Envelope {
+                                    channel: "events".to_string(),
+                                    payload: json!({
+                                        "type": "RUN_FAILED",
+                                        "runId": run_id,
+                                        "eventId": event_id,
+                                        "ruleId": rule.id,
+                                        "workflowId": workflow.id,
+                                        "failedNodeId": null,
+                                        "error": error_payload,
+                                        "partialArtifacts": [],
+                                    }),
+                                });
+                            }
                         }
-                        Err(error) => {
-                            let error_payload = json!({
-                                "code": "WORKFLOW_ERROR",
-                                "message": error.to_string(),
-                                "retryable": false,
-                            });
-                            action_desc = Some(format!("{} failed: {}", rule.name, error));
-                            self.db.update_run_status(
-                                &run_id,
-                                "failed",
-                                Some(&Utc::now().to_rfc3339()),
-                                Some(&error_payload.to_string()),
-                                Some("[]"),
-                            )?;
-                            self.event_bus.emit(Envelope {
-                                channel: "events".to_string(),
-                                payload: json!({
-                                    "type": "RUN_FAILED",
-                                    "runId": run_id,
-                                    "eventId": event_id,
-                                    "ruleId": rule.id,
-                                    "workflowId": workflow.id,
-                                    "failedNodeId": null,
-                                    "error": error_payload,
-                                    "partialArtifacts": [],
-                                }),
-                            });
-                        }
+                    } else {
+                        action_desc = Some(format!(
+                            "Workflow not found: {}",
+                            rule.then.workflow_id
+                        ));
                     }
                 } else {
-                    action_desc = Some(format!("Workflow not found: {}", rule.then.workflow_id));
+                    action_desc =
+                        Some("No matching rule - kept in Inbox".to_string());
                 }
-            } else {
-                action_desc = Some("No matching rule - kept in Inbox".to_string());
-            }
 
-            results.push(IngestResult {
-                original: original_name,
-                inbox_path: dest.to_string_lossy().to_string(),
-                size_bytes: size,
-                sha256,
-                action: action_desc,
+                Ok(IngestResult {
+                    original: original_name,
+                    inbox_path: dest.to_string_lossy().to_string(),
+                    size_bytes: size,
+                    sha256,
+                    action: action_desc,
+                })
             });
+        }
+
+        let mut results = Vec::new();
+        while let Some(outcome) = join_set.join_next().await {
+            match outcome {
+                Ok(Ok(result)) => results.push(result),
+                Ok(Err(e)) => {
+                    tracing::error!("File ingest failed: {e:#}");
+                }
+                Err(join_err) => {
+                    tracing::error!("Ingest task panicked: {join_err}");
+                }
+            }
         }
 
         Ok(results)
     }
+}
+
+async fn copy_with_progress(src: &Path, dest: &Path, sender: &ProgressSender) -> Result<()> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let file_name = src
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let metadata = tokio::fs::metadata(src).await?;
+    let total_bytes = metadata.len();
+
+    let mut reader = tokio::fs::File::open(src).await?;
+    let mut writer = tokio::fs::File::create(dest).await?;
+
+    let mut buf = vec![0u8; CHUNK_SIZE];
+    let mut bytes_copied: u64 = 0;
+
+    loop {
+        let n = reader.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        writer.write_all(&buf[..n]).await?;
+        bytes_copied += n as u64;
+
+        let percent = if total_bytes > 0 {
+            (bytes_copied as f64 / total_bytes as f64) * 100.0
+        } else {
+            100.0
+        };
+
+        let _ = sender.send(IngestProgress {
+            file_name: file_name.clone(),
+            bytes_copied,
+            total_bytes,
+            percent,
+        });
+    }
+
+    writer.flush().await?;
+    Ok(())
 }
 
 async fn collect_files(path: &Path) -> Result<Vec<PathBuf>> {

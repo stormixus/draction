@@ -19,6 +19,7 @@ draction-inbox = { path = "../../../crates/draction-inbox" }
 draction-engine = { path = "../../../crates/draction-engine" }
 draction-api = { path = "../../../crates/draction-api" }
 draction-lifecycle = { path = "../../../crates/draction-lifecycle" }
+draction-app-core = { path = "../../../crates/draction-app-core" }
 tauri = { version = "2", features = ["macos-private-api"] }
 tauri-build = { version = "2", features = [] }
 serde.workspace = true

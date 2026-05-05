@@ -3,7 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import RunsPanel from "./components/RunsPanel";
 import RulesPanel from "./components/RulesPanel";
 import { useHealth } from "./lib/query";
+import { setAuthToken } from "./lib/settings";
 import { useUiStore } from "./stores/uiStore";
+import { useSettingsStore } from "./stores/settingsStore";
 import { NavItem } from "./components/settings/NavItem";
 import {
   GeneralIcon,
@@ -42,16 +44,34 @@ const SETTINGS_ITEMS = [
 
 function App() {
   const [baseUrl, setBaseUrl] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
   const activePane = useUiStore((s) => s.activePane);
   const setActivePane = useUiStore((s) => s.setActivePane);
   const health = useHealth(baseUrl);
   const apiConnected = health.isSuccess;
+
+  const loadSettings = useSettingsStore((s) => s.loadSettings);
+  const settings = useSettingsStore((s) => s.settings);
 
   useEffect(() => {
     invoke<number>("get_api_port")
       .then((port) => setBaseUrl(`http://127.0.0.1:${port}`))
       .catch(() => setBaseUrl("http://127.0.0.1:9400"));
   }, []);
+
+  useEffect(() => {
+    // After the API port is known, grab the auth token and load settings
+    invoke<string>("get_auth_token")
+      .then((token) => {
+        setAuthToken(token);
+        return loadSettings();
+      })
+      .catch(() => {
+        // Fallback: try loading settings without auth (may work in dev)
+        return loadSettings();
+      })
+      .finally(() => setInitialized(true));
+  }, [loadSettings]);
 
   return (
     <div className="flex min-h-screen bg-bg text-text">
@@ -121,7 +141,7 @@ function App() {
 
       {/* Body */}
       <main className="min-w-0 flex-1 overflow-auto p-6">
-        {!baseUrl ? (
+        {!baseUrl || !initialized || !settings ? (
           <div className="flex items-center justify-center py-16 text-sm text-text-subtle">
             Initializing…
           </div>

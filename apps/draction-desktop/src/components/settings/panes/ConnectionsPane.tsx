@@ -5,15 +5,21 @@ import { Section } from "../Section";
 import { Input } from "../Input";
 import { Btn } from "../Btn";
 import { Chip } from "../Chip";
+import { useSettingsStore } from "../../../stores/settingsStore";
 
 export function ConnectionsPane() {
+  const settings = useSettingsStore((s) => s.settings);
+  const updateSetting = useSettingsStore((s) => s.updateSetting);
+
+  if (!settings) return null;
+
   return (
     <>
       <PaneHeader title="Connections" sub="Local services that can talk to Draction." />
 
       <Section title="Local API">
         <Row label="HTTP port">
-          <Input value="9400" mono width={100} />
+          <Input value={String(settings.api_port)} mono width={100} />
         </Row>
         <Row label="Bind address" hint="Localhost only — never exposed to the network.">
           <Input value="127.0.0.1" mono width={140} />
@@ -28,7 +34,9 @@ export function ConnectionsPane() {
 
       <Section title="OpenClaw bridge" desc="The optional AI peer that suggests rules.">
         <Row label="Status">
-          <Chip tone="warn">● Not connected</Chip>
+          <Chip tone={settings.openclaw_paired ? "accent" : "warn"}>
+            {settings.openclaw_paired ? "Connected" : "Not connected"}
+          </Chip>
         </Row>
         <Row label="Auto-suggest rules" hint="Draky asks 'always do this?' after each ingest.">
           <Switch aria-label="Auto-suggest rules" />
@@ -54,7 +62,13 @@ export function ConnectionsPane() {
               Pairing approval is required from this device.
             </div>
             <div className="flex gap-2">
-              <Input value="DRK-7Q2-91A" mono width={140} />
+              <Input
+                value={settings.pairing_code}
+                mono
+                width={140}
+                editable
+                onChange={(v) => updateSetting("pairing_code", v)}
+              />
               <Btn variant="primary">Approve incoming</Btn>
             </div>
           </div>

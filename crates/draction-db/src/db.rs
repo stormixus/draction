@@ -182,6 +182,25 @@ impl DractionDb {
         })
     }
 
+    pub fn get_event(&self, id: &str) -> Result<Option<EventRow>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, time, source_json, files_json FROM events WHERE id = ?1",
+            )?;
+            let row = stmt
+                .query_row(params![id], |r| {
+                    Ok(EventRow {
+                        id: r.get(0)?,
+                        time: r.get(1)?,
+                        source_json: r.get(2)?,
+                        files_json: r.get(3)?,
+                    })
+                })
+                .optional()?;
+            Ok(row)
+        })
+    }
+
     pub fn list_events(&self, limit: u32) -> Result<Vec<EventRow>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
@@ -367,6 +386,24 @@ impl DractionDb {
                 params![name, nodes_json, edges_json, now, id],
             )?;
             Ok(())
+        })
+    }
+
+    pub fn get_active_run_count(&self) -> Result<u32> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare("SELECT COUNT(*) FROM runs WHERE status = 'running'")?;
+            Ok(stmt.query_row([], |r| r.get::<_, u32>(0))?)
+        })
+    }
+
+    pub fn list_active_run_ids(&self) -> Result<Vec<String>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare("SELECT id FROM runs WHERE status = 'running'")?;
+            let ids = stmt
+                .query_map([], |r| r.get(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+            Ok(ids)
         })
     }
 

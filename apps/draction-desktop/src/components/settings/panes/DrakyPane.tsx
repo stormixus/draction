@@ -5,8 +5,37 @@ import { Section } from "../Section";
 import { Select } from "../Select";
 import { Btn } from "../Btn";
 import { Chip } from "../Chip";
+import { useSettingsStore } from "../../../stores/settingsStore";
+
+const DRAKY_PERSONALITY_OPTIONS = [
+  { value: "friendly", label: "Friendly (default)" },
+  { value: "professional", label: "Professional" },
+  { value: "silent", label: "Silent" },
+];
+
+function sizeToWidth(size: string): string {
+  switch (size) {
+    case "small": return "33%";
+    case "large": return "100%";
+    default: return "66%";
+  }
+}
+
+function widthToSize(pct: string): string {
+  const n = parseInt(pct);
+  if (n <= 40) return "small";
+  if (n >= 90) return "large";
+  return "medium";
+}
 
 export function DrakyPane() {
+  const settings = useSettingsStore((s) => s.settings);
+  const updateSetting = useSettingsStore((s) => s.updateSetting);
+
+  if (!settings) return null;
+
+  const sizeWidth = sizeToWidth(settings.draky_size);
+
   return (
     <>
       <PaneHeader
@@ -66,7 +95,8 @@ export function DrakyPane() {
         <Row label="Always on top">
           <Switch
             aria-label="Always on top"
-            defaultChecked
+            checked={settings.draky_always_on_top}
+            onCheckedChange={(v) => updateSetting("draky_always_on_top", v)}
             className="data-[state=checked]:bg-draky"
           />
         </Row>
@@ -79,25 +109,47 @@ export function DrakyPane() {
         </Row>
         <Row label="Size" hint="Affects the overlay window only — not the dashboard preview." last>
           <div className="flex items-center gap-2.5">
-            <span className="text-[11px] text-text-subtle">S</span>
-            <div className="relative h-1 w-[120px] rounded-full bg-surface-2">
+            <span
+              className="cursor-pointer text-[11px] text-text-subtle hover:text-text"
+              onClick={() => updateSetting("draky_size", "small")}
+            >
+              S
+            </span>
+            <div
+              className="relative h-1 w-[120px] cursor-pointer rounded-full bg-surface-2"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const pct = ((e.clientX - rect.left) / rect.width) * 100;
+                const snapped = Math.round(pct / 33) * 33;
+                updateSetting("draky_size", widthToSize(String(Math.max(33, snapped))));
+              }}
+            >
               <div
                 className="absolute left-0 h-full rounded-full bg-draky"
-                style={{ width: "66%" }}
+                style={{ width: sizeWidth }}
               />
               <div
                 className="absolute top-[-4px] h-3 w-3 rounded-full bg-white shadow"
-                style={{ left: "66%", marginLeft: -6 }}
+                style={{ left: sizeWidth, marginLeft: -6 }}
               />
             </div>
-            <span className="text-[11px] text-text-subtle">L</span>
+            <span
+              className="cursor-pointer text-[11px] text-text-subtle hover:text-text"
+              onClick={() => updateSetting("draky_size", "large")}
+            >
+              L
+            </span>
           </div>
         </Row>
       </Section>
 
       <Section title="Personality">
         <Row label="Voice" hint="How chatty Draky's toasts and tooltips are.">
-          <Select value="Friendly (default)" />
+          <Select
+            value={settings.draky_personality}
+            options={DRAKY_PERSONALITY_OPTIONS}
+            onChange={(v) => updateSetting("draky_personality", v)}
+          />
         </Row>
         <Row label="Burp on success" hint="The cute exhale animation after eating files.">
           <Switch

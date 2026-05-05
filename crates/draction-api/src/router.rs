@@ -1,10 +1,11 @@
+use axum::middleware;
 use axum::routing::{get, patch, post};
 use axum::Router;
 
 use crate::state::AppState;
 
 pub fn build_router(state: AppState) -> Router {
-    Router::new()
+    let api_routes = Router::new()
         // Rules
         .route("/api/v1/rules", get(crate::handlers::rules::list).post(crate::handlers::rules::create))
         .route("/api/v1/rules/{id}", get(crate::handlers::rules::get_one).put(crate::handlers::rules::update).delete(crate::handlers::rules::remove))
@@ -19,7 +20,21 @@ pub fn build_router(state: AppState) -> Router {
         // Events
         .route("/api/v1/events", get(crate::handlers::events::list))
         .route("/api/v1/events/{event_id}/undo", post(crate::handlers::events::undo))
-        // WebSocket
+        // Settings
+        .route("/api/v1/settings", get(crate::handlers::settings::get_settings).put(crate::handlers::settings::update_settings))
+        // Watcher
+        .route("/api/v1/watcher/start", post(crate::handlers::watcher::start_watcher))
+        .route("/api/v1/watcher/stop", post(crate::handlers::watcher::stop_watcher))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::auth::bearer_auth,
+        ));
+
+    Router::new()
+        // WebSocket (auth checked via query param in handler)
         .route("/ws", get(crate::ws::upgrade))
+        // About (no auth needed)
+        .route("/api/v1/settings/about", get(crate::handlers::settings::get_about))
+        .merge(api_routes)
         .with_state(state)
 }

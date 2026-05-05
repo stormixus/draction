@@ -1,5 +1,5 @@
 use axum::{
-    extract::Request,
+    extract::{Request, State},
     http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
@@ -7,16 +7,13 @@ use axum::{
 };
 use serde_json::json;
 
+use crate::state::AppState;
+
 pub async fn bearer_auth(
+    State(state): State<AppState>,
     req: Request,
     next: Next,
-    expected_token: String,
 ) -> Response {
-    // Skip auth for health endpoint
-    if req.uri().path() == "/health" && req.method() == axum::http::Method::GET {
-        return next.run(req).await;
-    }
-
     let auth_header = req
         .headers()
         .get("authorization")
@@ -25,7 +22,7 @@ pub async fn bearer_auth(
         .map(|s| s.to_owned());
 
     match auth_header {
-        Some(token) if token == expected_token => next.run(req).await,
+        Some(token) if token == state.auth_token => next.run(req).await,
         _ => (
             StatusCode::UNAUTHORIZED,
             Json(json!({

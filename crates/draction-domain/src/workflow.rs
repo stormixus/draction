@@ -16,10 +16,30 @@ pub struct WorkflowNode {
     pub params: serde_json::Value,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum EdgeType {
+    Sequential,
+    Parallel,
+    Conditional {
+        condition_field: String,
+        condition_op: String,
+        condition_value: serde_json::Value,
+    },
+}
+
+impl Default for EdgeType {
+    fn default() -> Self {
+        EdgeType::Sequential
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Edge {
     pub from: String,
     pub to: String,
+    #[serde(default)]
+    pub edge_type: EdgeType,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

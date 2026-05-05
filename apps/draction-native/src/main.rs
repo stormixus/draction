@@ -174,7 +174,7 @@ fn ingest_paths(state: &mut NativeApp, paths: Vec<PathBuf>) -> Task<Message> {
     state.status = format!("Processing {} dropped item(s)...", paths.len());
 
     Task::perform(
-        async move { runtime.ingest_paths(paths).await.map_err(|e| e.to_string()) },
+        async move { runtime.ingest_paths(paths, None).await.map_err(|e| e.to_string()) },
         Message::IngestFinished,
     )
 }

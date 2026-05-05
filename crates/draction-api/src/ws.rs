@@ -1,16 +1,42 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        State,
+        Query, State,
     },
-    response::Response,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
 };
 use draction_events::EventBus;
+use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::state::AppState;
 
-pub async fn upgrade(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
+#[derive(Deserialize)]
+pub struct WsParams {
+    token: Option<String>,
+}
+
+pub async fn upgrade(
+    ws: WebSocketUpgrade,
+    Query(params): Query<WsParams>,
+    State(state): State<AppState>,
+) -> Response {
+    let token = params.token.unwrap_or_default();
+    if token != state.auth_token {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "error": {
+                    "code": "UNAUTHORIZED",
+                    "message": "Missing or invalid token"
+                }
+            })),
+        )
+            .into_response();
+    }
+
     ws.on_upgrade(move |socket| handle_socket(socket, state.event_bus))
 }
 

@@ -7,6 +7,8 @@ edition = "2024"
 draction-domain = { path = "../draction-domain" }
 draction-db = { path = "../draction-db" }
 draction-events = { path = "../draction-events" }
+draction-inbox = { path = "../draction-inbox" }
+draction-engine = { path = "../draction-engine" }
 axum = { workspace = true, features = ["ws"] }
 tower-http.workspace = true
 tokio.workspace = true
@@ -18,3 +20,8 @@ chrono.workspace = true
 uuid.workspace = true
 rusqlite.workspace = true
 rand = "0.9"
+notify = { version = "6", features = ["macos_kqueue"] }
+
+[dev-dependencies]
+tempfile = "3"
+reqwest = { version = "0.12", features = ["json"] }

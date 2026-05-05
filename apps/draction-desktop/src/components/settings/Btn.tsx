@@ -4,9 +4,10 @@ interface BtnProps {
   variant?: "default" | "primary" | "ghost";
   danger?: boolean;
   children: ReactNode;
+  onClick?: () => void;
 }
 
-export function Btn({ children, variant = "default", danger }: BtnProps) {
+export function Btn({ children, variant = "default", danger, onClick }: BtnProps) {
   const base =
     "rounded-md px-3 py-[7px] text-[13px] font-medium transition-colors cursor-pointer";
 
@@ -14,6 +15,7 @@ export function Btn({ children, variant = "default", danger }: BtnProps) {
     return (
       <button
         className={`${base} border border-danger/40 bg-transparent text-danger hover:bg-danger/10`}
+        onClick={onClick}
       >
         {children}
       </button>
@@ -28,5 +30,5 @@ export function Btn({ children, variant = "default", danger }: BtnProps) {
       "border border-transparent bg-transparent text-text-muted hover:bg-surface-2 hover:text-text",
   };
 
-  return <button className={`${base} ${styles[variant]}`}>{children}</button>;
+  return <button className={`${base} ${styles[variant]}`} onClick={onClick}>{children}</button>;
 }
