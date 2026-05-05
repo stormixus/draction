@@ -1,7 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
+  "apps/draction-native",
   "apps/draction-desktop/src-tauri",
+  "crates/draction-app-core",
   "crates/draction-domain",
   "crates/draction-db",
   "crates/draction-events",

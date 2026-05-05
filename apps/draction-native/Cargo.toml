@@ -1,0 +1,15 @@
+[package]
+name = "draction-native"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "draction-native"
+path = "src/main.rs"
+
+[dependencies]
+draction-app-core = { path = "../../crates/draction-app-core" }
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+iced = { version = "0.14", features = ["tokio"] }

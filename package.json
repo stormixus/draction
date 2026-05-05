@@ -4,7 +4,8 @@
   "scripts": {
     "dev": "pnpm -F draction-desktop dev",
     "build": "pnpm -F draction-desktop build",
-    "tauri": "pnpm -F draction-desktop tauri"
+    "tauri": "pnpm -F draction-desktop tauri",
+    "native": "cargo run -p draction-native"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.1"

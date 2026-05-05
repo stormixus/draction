@@ -1,17 +1,28 @@
 import { create } from "zustand";
 
 type Theme = "system" | "light" | "dark";
-type DashboardTab = "runs" | "rules";
+
+type AppPane =
+  | "runs"
+  | "rules"
+  | "general"
+  | "inbox"
+  | "rules-behavior"
+  | "draky"
+  | "connections"
+  | "safety"
+  | "advanced"
+  | "about";
 
 interface UiState {
   theme: Theme;
-  activeTab: DashboardTab;
+  activePane: AppPane;
   selectedRunId: string | null;
   overlayVisible: boolean;
   lastUndoRunId: string | null;
 
   setTheme: (theme: Theme) => void;
-  setActiveTab: (tab: DashboardTab) => void;
+  setActivePane: (pane: AppPane) => void;
   openRun: (runId: string) => void;
   closeRun: () => void;
   setOverlayVisible: (visible: boolean) => void;
@@ -20,14 +31,14 @@ interface UiState {
 
 export const useUiStore = create<UiState>((set) => ({
   theme: "dark",
-  activeTab: "runs",
+  activePane: "runs",
   selectedRunId: null,
   overlayVisible: true,
   lastUndoRunId: null,
 
   setTheme: (theme) => set({ theme }),
-  setActiveTab: (activeTab) => set({ activeTab }),
-  openRun: (runId) => set({ activeTab: "runs", selectedRunId: runId }),
+  setActivePane: (activePane) => set({ activePane }),
+  openRun: (runId) => set({ activePane: "runs", selectedRunId: runId }),
   closeRun: () => set({ selectedRunId: null }),
   setOverlayVisible: (overlayVisible) => set({ overlayVisible }),
   setLastUndoRunId: (lastUndoRunId) => set({ lastUndoRunId }),
