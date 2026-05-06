@@ -139,7 +139,7 @@
       "id": "US-3.1",
       "title": "E2E Test Suite",
       "phase": 3,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "pnpm test:e2e runs all E2E tests",
         "Tests cover drag-drop pipeline end-to-end",
@@ -187,7 +187,7 @@
       "id": "US-3.5",
       "title": "Performance and Polish",
       "phase": 3,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "No std::fs calls inside async functions",
         "Event log supports pagination",

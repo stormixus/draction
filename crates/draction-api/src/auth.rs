@@ -14,17 +14,17 @@ pub fn generate_token() -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
-pub fn load_or_create_token(base: &Path) -> Result<String> {
+pub async fn load_or_create_token(base: &Path) -> Result<String> {
     let config_path = base.join("config.json");
     if config_path.exists() {
-        let content = std::fs::read_to_string(&config_path)?;
+        let content = tokio::fs::read_to_string(&config_path).await?;
         let config: Config = serde_json::from_str(&content)?;
         return Ok(config.token);
     }
 
     let token = generate_token();
     let config = Config { token: token.clone() };
-    std::fs::create_dir_all(base)?;
-    std::fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
+    tokio::fs::create_dir_all(base).await?;
+    tokio::fs::write(&config_path, serde_json::to_string_pretty(&config)?).await?;
     Ok(token)
 }

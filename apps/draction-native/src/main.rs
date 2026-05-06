@@ -154,11 +154,11 @@ fn refresh_all(state: &NativeApp) -> Task<Message> {
 
     Task::batch([
         Task::perform(
-            async move { runs_runtime.list_runs(50).map_err(|e| e.to_string()) },
+            async move { runs_runtime.list_runs(50, 0).map_err(|e| e.to_string()) },
             Message::RunsLoaded,
         ),
         Task::perform(
-            async move { rules_runtime.list_rules().map_err(|e| e.to_string()) },
+            async move { rules_runtime.list_rules().await.map_err(|e| e.to_string()) },
             Message::RulesLoaded,
         ),
     ])

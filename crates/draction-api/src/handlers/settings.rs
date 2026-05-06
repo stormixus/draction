@@ -9,7 +9,7 @@ fn err(status: StatusCode, code: &str, message: &str) -> (StatusCode, Json<serde
 }
 
 pub async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {
-    let settings = Settings::load(&state.base_dir).unwrap_or_default();
+    let settings = Settings::load(&state.base_dir).await.unwrap_or_default();
     (StatusCode::OK, Json(serde_json::to_value(settings).unwrap())).into_response()
 }
 
@@ -17,7 +17,7 @@ pub async fn update_settings(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let mut settings = Settings::load(&state.base_dir).unwrap_or_default();
+    let mut settings = Settings::load(&state.base_dir).await.unwrap_or_default();
 
     // Partial merge: only update fields present in the request
     if let Some(incoming_obj) = body.as_object() {
@@ -44,7 +44,7 @@ pub async fn update_settings(
         return err(StatusCode::UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", "theme must be one of: system, light, dark").into_response();
     }
 
-    if let Err(e) = settings.save(&state.base_dir) {
+    if let Err(e) = settings.save(&state.base_dir).await {
         return err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", &e.to_string()).into_response();
     }
 

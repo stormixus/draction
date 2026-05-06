@@ -4,6 +4,7 @@ use draction_api::state::AppState;
 use draction_db::DractionDb;
 use draction_domain::ids;
 use draction_domain::rule::{Condition, Op, Rule, ThenAction};
+use draction_domain::settings::Settings;
 use draction_domain::workflow::{Workflow, WorkflowNode};
 use draction_engine::rule_engine::{self, EvalCtx};
 use draction_engine::workflow_engine::WorkflowEngine;
@@ -83,6 +84,9 @@ pub struct RuleSummary {
 
 impl DractionRuntime {
     pub async fn bootstrap() -> Result<Self> {
+        if let Ok(dir) = std::env::var("DRACTION_BASE_DIR") {
+            return Self::bootstrap_with_base(PathBuf::from(dir)).await;
+        }
         let home = dirs::home_dir().context("Cannot find home directory")?;
         Self::bootstrap_with_base(home.join("Draction")).await
     }
@@ -99,7 +103,7 @@ impl DractionRuntime {
         let db = Arc::new(DractionDb::open(&base_dir.join("draction.db"))?);
         db.mark_running_as_failed()?;
 
-        let auth_token = draction_api::auth::load_or_create_token(&base_dir)?;
+        let auth_token = draction_api::auth::load_or_create_token(&base_dir).await?;
         let event_bus = Arc::new(EventBus::new(256));
         let undo_stack = Arc::new(Mutex::new(UndoStack::new()));
         // Channel bridge: watcher handlers send paths here, runtime consumes them
@@ -137,14 +141,14 @@ impl DractionRuntime {
             }
         });
 
-        ensure_rules(&runtime.base_dir)?;
-        ensure_workflows(&runtime.base_dir)?;
+        ensure_rules(&runtime.base_dir).await?;
+        ensure_workflows(&runtime.base_dir).await?;
 
         Ok(runtime)
     }
 
-    pub fn list_runs(&self, limit: u32) -> Result<Vec<RunSummary>> {
-        let rows = self.db.list_runs(None, limit)?;
+    pub fn list_runs(&self, limit: u32, offset: u32) -> Result<Vec<RunSummary>> {
+        let rows = self.db.list_runs(None, limit, offset)?;
         Ok(rows
             .into_iter()
             .map(|row| RunSummary {
@@ -161,8 +165,8 @@ impl DractionRuntime {
             .collect())
     }
 
-    pub fn list_rules(&self) -> Result<Vec<RuleSummary>> {
-        Ok(ensure_rules(&self.base_dir)?
+    pub async fn list_rules(&self) -> Result<Vec<RuleSummary>> {
+        Ok(ensure_rules(&self.base_dir).await?
             .into_iter()
             .map(|rule| RuleSummary {
                 workflow_id: rule.then.workflow_id,
@@ -179,8 +183,8 @@ impl DractionRuntime {
         paths: Vec<PathBuf>,
         progress: Option<ProgressSender>,
     ) -> Result<Vec<IngestResult>> {
-        let rules = ensure_rules(&self.base_dir)?;
-        let workflows = ensure_workflows(&self.base_dir)?;
+        let rules = ensure_rules(&self.base_dir).await?;
+        let workflows = ensure_workflows(&self.base_dir).await?;
         let inbox = draction_inbox::ingest::inbox_dir(&self.base_dir);
 
         let mut all_files = Vec::new();
@@ -220,6 +224,42 @@ impl DractionRuntime {
 
                 let src_size =
                     tokio::fs::metadata(&src).await.map(|m| m.len()).unwrap_or(0);
+
+                // Check file size limit
+                let settings = Settings::load(&runtime.base_dir).await.unwrap_or_default();
+                let max_bytes = settings.max_file_size_mb * 1024 * 1024;
+                if src_size > max_bytes {
+                    let size_str = if src_size >= 1024 * 1024 * 1024 {
+                        format!("{:.1} GB", src_size as f64 / (1024.0 * 1024.0 * 1024.0))
+                    } else if src_size >= 1024 * 1024 {
+                        format!("{:.1} MB", src_size as f64 / (1024.0 * 1024.0))
+                    } else {
+                        format!("{} KB", src_size / 1024)
+                    };
+                    let msg = format!(
+                        "File '{}' ({}) exceeds max size ({} MB)",
+                        original_name,
+                        size_str,
+                        settings.max_file_size_mb,
+                    );
+                    runtime.event_bus.emit(Envelope {
+                        channel: "errors".to_string(),
+                        payload: json!({
+                            "type": "FILE_TOO_LARGE",
+                            "file": original_name,
+                            "size_bytes": src_size,
+                            "max_bytes": max_bytes,
+                            "message": msg,
+                        }),
+                    });
+                    return Ok(IngestResult {
+                        original: original_name,
+                        inbox_path: String::new(),
+                        size_bytes: src_size,
+                        sha256: String::new(),
+                        action: Some(msg),
+                    });
+                }
 
                 // Copy to inbox: use chunked copy for large files, fast path for small
                 let dest = if src_size > LARGE_FILE_THRESHOLD && progress.is_some() {
@@ -510,27 +550,27 @@ fn workflows_path(base: &Path) -> PathBuf {
     base.join("workflows.json")
 }
 
-fn ensure_rules(base: &Path) -> Result<Vec<Rule>> {
+async fn ensure_rules(base: &Path) -> Result<Vec<Rule>> {
     let path = rules_path(base);
     if !path.exists() {
         let defaults = default_rules();
-        std::fs::write(&path, serde_json::to_string_pretty(&defaults)?)?;
+        tokio::fs::write(&path, serde_json::to_string_pretty(&defaults)?).await?;
         return Ok(defaults);
     }
 
-    let data = std::fs::read_to_string(&path)?;
+    let data = tokio::fs::read_to_string(&path).await?;
     Ok(serde_json::from_str(&data)?)
 }
 
-fn ensure_workflows(base: &Path) -> Result<Vec<Workflow>> {
+async fn ensure_workflows(base: &Path) -> Result<Vec<Workflow>> {
     let path = workflows_path(base);
     if !path.exists() {
         let defaults = default_workflows();
-        std::fs::write(&path, serde_json::to_string_pretty(&defaults)?)?;
+        tokio::fs::write(&path, serde_json::to_string_pretty(&defaults)?).await?;
         return Ok(defaults);
     }
 
-    let data = std::fs::read_to_string(&path)?;
+    let data = tokio::fs::read_to_string(&path).await?;
     Ok(serde_json::from_str(&data)?)
 }
 

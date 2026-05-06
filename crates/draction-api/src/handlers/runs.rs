@@ -20,6 +20,7 @@ fn err(status: StatusCode, code: &str, message: &str) -> (StatusCode, Json<serde
 pub struct ListQuery {
     pub status: Option<String>,
     pub limit: Option<u32>,
+    pub offset: Option<u32>,
 }
 
 pub async fn list(
@@ -27,8 +28,17 @@ pub async fn list(
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     let limit = q.limit.unwrap_or(50);
-    match state.db.list_runs(q.status.as_deref(), limit) {
-        Ok(runs) => (StatusCode::OK, Json(json!(runs))).into_response(),
+    let offset = q.offset.unwrap_or(0);
+    match state.db.list_runs(q.status.as_deref(), limit, offset) {
+        Ok(runs) => {
+            let total = state.db.count_runs(q.status.as_deref()).unwrap_or(0);
+            (StatusCode::OK, Json(json!({
+                "items": runs,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            }))).into_response()
+        }
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", &e.to_string()).into_response(),
     }
 }
@@ -74,7 +84,7 @@ pub async fn retry(
     };
 
     let workflows_path = state.base_dir.join("workflows.json");
-    let data = match std::fs::read_to_string(&workflows_path) {
+    let data = match tokio::fs::read_to_string(&workflows_path).await {
         Err(_) => return err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Failed to read workflows").into_response(),
         Ok(d) => d,
     };

@@ -41,6 +41,7 @@ pub struct Settings {
     pub db_path: String,
     pub log_level: String,
     pub api_port: u16,
+    pub max_file_size_mb: u64,
 }
 
 impl Default for Settings {
@@ -72,26 +73,27 @@ impl Default for Settings {
             db_path: String::new(),
             log_level: "info".into(),
             api_port: 9400,
+            max_file_size_mb: 500,
         }
     }
 }
 
 impl Settings {
-    pub fn load(base_dir: &std::path::Path) -> anyhow::Result<Self> {
+    pub async fn load(base_dir: &std::path::Path) -> anyhow::Result<Self> {
         let path = base_dir.join("settings.json");
         if path.exists() {
-            let data = std::fs::read_to_string(&path)?;
+            let data = tokio::fs::read_to_string(&path).await?;
             Ok(serde_json::from_str(&data).unwrap_or_default())
         } else {
             let settings = Self::default();
-            settings.save(base_dir)?;
+            settings.save(base_dir).await?;
             Ok(settings)
         }
     }
 
-    pub fn save(&self, base_dir: &std::path::Path) -> anyhow::Result<()> {
+    pub async fn save(&self, base_dir: &std::path::Path) -> anyhow::Result<()> {
         let path = base_dir.join("settings.json");
-        std::fs::write(&path, serde_json::to_string_pretty(self)?)?;
+        tokio::fs::write(&path, serde_json::to_string_pretty(self)?).await?;
         Ok(())
     }
 }

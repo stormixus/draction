@@ -17,22 +17,22 @@ fn rules_path(state: &AppState) -> std::path::PathBuf {
     state.base_dir.join("rules.json")
 }
 
-fn read_rules(state: &AppState) -> anyhow::Result<Vec<Rule>> {
+async fn read_rules(state: &AppState) -> anyhow::Result<Vec<Rule>> {
     let path = rules_path(state);
     if !path.exists() {
         return Ok(vec![]);
     }
-    let content = std::fs::read_to_string(&path)?;
+    let content = tokio::fs::read_to_string(&path).await?;
     Ok(serde_json::from_str(&content)?)
 }
 
-fn write_rules(state: &AppState, rules: &[Rule]) -> anyhow::Result<()> {
-    std::fs::write(rules_path(state), serde_json::to_string_pretty(rules)?)?;
+async fn write_rules(state: &AppState, rules: &[Rule]) -> anyhow::Result<()> {
+    tokio::fs::write(rules_path(state), serde_json::to_string_pretty(rules)?).await?;
     Ok(())
 }
 
 pub async fn list(State(state): State<AppState>) -> impl IntoResponse {
-    match read_rules(&state) {
+    match read_rules(&state).await {
         Ok(rules) => (StatusCode::OK, Json(json!(rules))).into_response(),
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", &e.to_string()).into_response(),
     }
@@ -42,7 +42,7 @@ pub async fn get_one(
     Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    match read_rules(&state) {
+    match read_rules(&state).await {
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", &e.to_string()).into_response(),
         Ok(rules) => match rules.into_iter().find(|r| r.id == id) {
             Some(rule) => (StatusCode::OK, Json(json!(rule))).into_response(),
@@ -55,7 +55,7 @@ pub async fn create(
     State(state): State<AppState>,
     Json(body): Json<Rule>,
 ) -> impl IntoResponse {
-    let mut rules = match read_rules(&state) {
+    let mut rules = match read_rules(&state).await {
         Ok(r) => r,
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", &e.to_string()).into_response(),
     };
@@ -63,7 +63,7 @@ pub async fn create(
         return err(StatusCode::CONFLICT, "CONFLICT", "Rule with this id already exists").into_response();
     }
     rules.push(body.clone());
-    match write_rules(&state, &rules) {
+    match write_rules(&state, &rules).await {
         Ok(_) => (StatusCode::CREATED, Json(json!(body))).into_response(),
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", &e.to_string()).into_response(),
     }
@@ -74,7 +74,7 @@ pub async fn update(
     State(state): State<AppState>,
     Json(body): Json<Rule>,
 ) -> impl IntoResponse {
-    let mut rules = match read_rules(&state) {
+    let mut rules = match read_rules(&state).await {
         Ok(r) => r,
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", &e.to_string()).into_response(),
     };
@@ -83,7 +83,7 @@ pub async fn update(
         None => return err(StatusCode::NOT_FOUND, "NOT_FOUND", "Rule not found").into_response(),
     };
     rules[pos] = body.clone();
-    match write_rules(&state, &rules) {
+    match write_rules(&state, &rules).await {
         Ok(_) => (StatusCode::OK, Json(json!(body))).into_response(),
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", &e.to_string()).into_response(),
     }
@@ -93,7 +93,7 @@ pub async fn remove(
     Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    let mut rules = match read_rules(&state) {
+    let mut rules = match read_rules(&state).await {
         Ok(r) => r,
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", &e.to_string()).into_response(),
     };
@@ -102,7 +102,7 @@ pub async fn remove(
     if rules.len() == len_before {
         return err(StatusCode::NOT_FOUND, "NOT_FOUND", "Rule not found").into_response();
     }
-    match write_rules(&state, &rules) {
+    match write_rules(&state, &rules).await {
         Ok(_) => (StatusCode::OK, Json(json!({ "ok": true }))).into_response(),
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", &e.to_string()).into_response(),
     }
@@ -112,7 +112,7 @@ pub async fn toggle_enabled(
     Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    let mut rules = match read_rules(&state) {
+    let mut rules = match read_rules(&state).await {
         Ok(r) => r,
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", &e.to_string()).into_response(),
     };
@@ -122,7 +122,7 @@ pub async fn toggle_enabled(
     };
     rules[pos].enabled = !rules[pos].enabled;
     let updated = rules[pos].clone();
-    match write_rules(&state, &rules) {
+    match write_rules(&state, &rules).await {
         Ok(_) => (StatusCode::OK, Json(json!(updated))).into_response(),
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", &e.to_string()).into_response(),
     }

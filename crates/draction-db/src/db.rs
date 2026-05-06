@@ -145,26 +145,44 @@ impl DractionDb {
         })
     }
 
-    pub fn list_runs(&self, status_filter: Option<&str>, limit: u32) -> Result<Vec<RunRow>> {
+    pub fn list_runs(
+        &self,
+        status_filter: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<RunRow>> {
         self.with_conn(|conn| {
             let rows = if let Some(status) = status_filter {
                 let mut stmt = conn.prepare(
                     "SELECT id, event_id, rule_id, workflow_id, status, started_at, \
                             finished_at, error_json, artifacts_json \
-                     FROM runs WHERE status = ?1 ORDER BY started_at DESC LIMIT ?2",
+                     FROM runs WHERE status = ?1 ORDER BY started_at DESC LIMIT ?2 OFFSET ?3",
                 )?;
-                stmt.query_map(params![status, limit], row_to_run)?
+                stmt.query_map(params![status, limit, offset], row_to_run)?
                     .collect::<rusqlite::Result<Vec<_>>>()?
             } else {
                 let mut stmt = conn.prepare(
                     "SELECT id, event_id, rule_id, workflow_id, status, started_at, \
                             finished_at, error_json, artifacts_json \
-                     FROM runs ORDER BY started_at DESC LIMIT ?1",
+                     FROM runs ORDER BY started_at DESC LIMIT ?1 OFFSET ?2",
                 )?;
-                stmt.query_map(params![limit], row_to_run)?
+                stmt.query_map(params![limit, offset], row_to_run)?
                     .collect::<rusqlite::Result<Vec<_>>>()?
             };
             Ok(rows)
+        })
+    }
+
+    pub fn count_runs(&self, status_filter: Option<&str>) -> Result<u32> {
+        self.with_conn(|conn| {
+            if let Some(status) = status_filter {
+                let mut stmt =
+                    conn.prepare("SELECT COUNT(*) FROM runs WHERE status = ?1")?;
+                Ok(stmt.query_row(params![status], |r| r.get::<_, u32>(0))?)
+            } else {
+                let mut stmt = conn.prepare("SELECT COUNT(*) FROM runs")?;
+                Ok(stmt.query_row([], |r| r.get::<_, u32>(0))?)
+            }
         })
     }
 
@@ -201,13 +219,13 @@ impl DractionDb {
         })
     }
 
-    pub fn list_events(&self, limit: u32) -> Result<Vec<EventRow>> {
+    pub fn list_events(&self, limit: u32, offset: u32) -> Result<Vec<EventRow>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, time, source_json, files_json FROM events ORDER BY time DESC LIMIT ?1",
+                "SELECT id, time, source_json, files_json FROM events ORDER BY time DESC LIMIT ?1 OFFSET ?2",
             )?;
             let rows = stmt
-                .query_map(params![limit], |r| {
+                .query_map(params![limit, offset], |r| {
                     Ok(EventRow {
                         id: r.get(0)?,
                         time: r.get(1)?,
@@ -217,6 +235,13 @@ impl DractionDb {
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(rows)
+        })
+    }
+
+    pub fn count_events(&self) -> Result<u32> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare("SELECT COUNT(*) FROM events")?;
+            Ok(stmt.query_row([], |r| r.get::<_, u32>(0))?)
         })
     }
 

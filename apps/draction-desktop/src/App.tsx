@@ -52,6 +52,8 @@ function App() {
 
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const settings = useSettingsStore((s) => s.settings);
+  const overlayVisible = useUiStore((s) => s.overlayVisible);
+  const setOverlayVisible = useUiStore((s) => s.setOverlayVisible);
 
   useEffect(() => {
     invoke<number>("get_api_port")
@@ -72,6 +74,24 @@ function App() {
       })
       .finally(() => setInitialized(true));
   }, [loadSettings]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey;
+      if (isMod && e.key === ",") {
+        e.preventDefault();
+        setActivePane("general");
+      }
+      if (isMod && e.shiftKey && (e.key === "D" || e.key === "d")) {
+        e.preventDefault();
+        const next = !overlayVisible;
+        setOverlayVisible(next);
+        invoke("set_overlay_visible", { visible: next }).catch(() => {});
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [overlayVisible, setActivePane, setOverlayVisible]);
 
   return (
     <div className="flex min-h-screen bg-bg text-text">

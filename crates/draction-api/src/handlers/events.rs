@@ -16,6 +16,7 @@ fn err(status: StatusCode, code: &str, message: &str) -> (StatusCode, Json<serde
 #[derive(Deserialize)]
 pub struct ListQuery {
     pub limit: Option<u32>,
+    pub offset: Option<u32>,
 }
 
 pub async fn list(
@@ -23,8 +24,17 @@ pub async fn list(
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     let limit = q.limit.unwrap_or(50);
-    match state.db.list_events(limit) {
-        Ok(events) => (StatusCode::OK, Json(json!(events))).into_response(),
+    let offset = q.offset.unwrap_or(0);
+    match state.db.list_events(limit, offset) {
+        Ok(events) => {
+            let total = state.db.count_events().unwrap_or(0);
+            (StatusCode::OK, Json(json!({
+                "items": events,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            }))).into_response()
+        }
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", &e.to_string()).into_response(),
     }
 }

@@ -44,7 +44,7 @@ pub async fn graceful_shutdown(db: Arc<DractionDb>, lock_path: PathBuf) {
 
     // Release lock file
     if lock_path.exists() {
-        if let Err(e) = std::fs::remove_file(&lock_path) {
+        if let Err(e) = tokio::fs::remove_file(&lock_path).await {
             warn!("Failed to remove lock file: {e}");
         } else {
             info!("Lock file released");
