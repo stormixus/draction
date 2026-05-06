@@ -6,9 +6,11 @@ pub mod state;
 pub mod ws;
 
 use anyhow::Result;
+use axum::http::{header, Method};
 use axum::routing::get;
 use axum::Router;
 use state::AppState;
+use tower_http::cors::{Any, CorsLayer};
 
 pub async fn start_server(port: u16, app_state: AppState) -> Result<u16> {
     for attempt in 0..10u16 {
@@ -23,9 +25,22 @@ pub async fn start_server(port: u16, app_state: AppState) -> Result<u16> {
             }
         };
 
+        let cors = CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
+            .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE]);
+
         let app = Router::new()
             .route("/api/v1/health", get(health))
-            .merge(router::build_router(app_state.clone()));
+            .merge(router::build_router(app_state.clone()))
+            .layer(cors);
 
         tracing::info!("API server listening on {}", addr);
 

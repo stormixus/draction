@@ -15,7 +15,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 pub mod watcher;
 
@@ -30,6 +30,7 @@ pub struct DractionRuntime {
     pub event_bus: Arc<EventBus>,
     pub undo_stack: Arc<Mutex<UndoStack>>,
     pub auth_token: String,
+    pub auth_token_cell: Arc<RwLock<String>>,
 }
 
 impl fmt::Debug for DractionRuntime {
@@ -104,16 +105,16 @@ impl DractionRuntime {
         db.mark_running_as_failed()?;
 
         let auth_token = draction_api::auth::load_or_create_token(&base_dir).await?;
+        let auth_token_cell = Arc::new(RwLock::new(auth_token.clone()));
         let event_bus = Arc::new(EventBus::new(256));
         let undo_stack = Arc::new(Mutex::new(UndoStack::new()));
         // Channel bridge: watcher handlers send paths here, runtime consumes them
-        let (watcher_tx, mut watcher_rx) =
-            tokio::sync::mpsc::unbounded_channel::<Vec<PathBuf>>();
+        let (watcher_tx, mut watcher_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<PathBuf>>();
 
         let state = AppState {
             db: db.clone(),
             base_dir: base_dir.clone(),
-            auth_token: auth_token.clone(),
+            auth_token: auth_token_cell.clone(),
             event_bus: event_bus.clone(),
             undo_stack: undo_stack.clone(),
             watcher_flag: Arc::new(Mutex::new(None)),
@@ -130,6 +131,7 @@ impl DractionRuntime {
             event_bus,
             undo_stack,
             auth_token,
+            auth_token_cell,
         };
 
         let consumer_runtime = runtime.clone();
@@ -166,7 +168,8 @@ impl DractionRuntime {
     }
 
     pub async fn list_rules(&self) -> Result<Vec<RuleSummary>> {
-        Ok(ensure_rules(&self.base_dir).await?
+        Ok(ensure_rules(&self.base_dir)
+            .await?
             .into_iter()
             .map(|rule| RuleSummary {
                 workflow_id: rule.then.workflow_id,
@@ -222,8 +225,10 @@ impl DractionRuntime {
                     .to_string_lossy()
                     .to_string();
 
-                let src_size =
-                    tokio::fs::metadata(&src).await.map(|m| m.len()).unwrap_or(0);
+                let src_size = tokio::fs::metadata(&src)
+                    .await
+                    .map(|m| m.len())
+                    .unwrap_or(0);
 
                 // Check file size limit
                 let settings = Settings::load(&runtime.base_dir).await.unwrap_or_default();
@@ -238,9 +243,7 @@ impl DractionRuntime {
                     };
                     let msg = format!(
                         "File '{}' ({}) exceeds max size ({} MB)",
-                        original_name,
-                        size_str,
-                        settings.max_file_size_mb,
+                        original_name, size_str, settings.max_file_size_mb,
                     );
                     runtime.event_bus.emit(Envelope {
                         channel: "errors".to_string(),
@@ -268,8 +271,7 @@ impl DractionRuntime {
                     tokio::fs::create_dir_all(&inbox)
                         .await
                         .with_context(|| format!("Create inbox dir {}", inbox.display()))?;
-                    copy_with_progress(&src, &dest_path, progress.as_ref().unwrap())
-                        .await?;
+                    copy_with_progress(&src, &dest_path, progress.as_ref().unwrap()).await?;
                     dest_path
                 } else {
                     draction_inbox::ingest::ingest_file(&src, &inbox, true)
@@ -337,9 +339,7 @@ impl DractionRuntime {
                 let eval_ctx = build_eval_ctx(&original_name, &ext, size);
                 let action_desc: Option<String>;
 
-                if let Some(rule) =
-                    rule_engine::match_first_rule(&rules, &eval_ctx)
-                {
+                if let Some(rule) = rule_engine::match_first_rule(&rules, &eval_ctx) {
                     if let Some(workflow) =
                         workflows.iter().find(|wf| wf.id == rule.then.workflow_id)
                     {
@@ -375,8 +375,7 @@ impl DractionRuntime {
                             .await
                         {
                             Ok(()) => {
-                                let summary =
-                                    format!("{} -> {}", rule.name, workflow.name);
+                                let summary = format!("{} -> {}", rule.name, workflow.name);
                                 action_desc = Some(summary.clone());
                                 runtime.db.update_run_status(
                                     &run_id,
@@ -404,10 +403,7 @@ impl DractionRuntime {
                                     "message": error.to_string(),
                                     "retryable": false,
                                 });
-                                action_desc = Some(format!(
-                                    "{} failed: {}",
-                                    rule.name, error
-                                ));
+                                action_desc = Some(format!("{} failed: {}", rule.name, error));
                                 runtime.db.update_run_status(
                                     &run_id,
                                     "failed",
@@ -431,14 +427,11 @@ impl DractionRuntime {
                             }
                         }
                     } else {
-                        action_desc = Some(format!(
-                            "Workflow not found: {}",
-                            rule.then.workflow_id
-                        ));
+                        action_desc =
+                            Some(format!("Workflow not found: {}", rule.then.workflow_id));
                     }
                 } else {
-                    action_desc =
-                        Some("No matching rule - kept in Inbox".to_string());
+                    action_desc = Some("No matching rule - kept in Inbox".to_string());
                 }
 
                 Ok(IngestResult {

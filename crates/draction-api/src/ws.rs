@@ -1,11 +1,11 @@
 use axum::{
+    Json,
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
         Query, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use draction_events::EventBus;
 use serde::Deserialize;
@@ -24,7 +24,12 @@ pub async fn upgrade(
     State(state): State<AppState>,
 ) -> Response {
     let token = params.token.unwrap_or_default();
-    if token != state.auth_token {
+    let expected = state
+        .auth_token
+        .read()
+        .map(|token| token.clone())
+        .unwrap_or_default();
+    if token != expected {
         return (
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({

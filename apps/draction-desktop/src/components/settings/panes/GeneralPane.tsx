@@ -4,6 +4,7 @@ import { Row } from "../Row";
 import { Section } from "../Section";
 import { Select } from "../Select";
 import { useSettingsStore } from "../../../stores/settingsStore";
+import { SUPPORTED_LANGUAGES, trOptions, useI18n } from "../../../lib/i18n";
 
 const THEME_OPTIONS = [
   { value: "system", label: "System (Dark)" },
@@ -19,12 +20,6 @@ const ACCENT_COLORS = [
   { value: "#fbbf24", label: "Amber" },
 ];
 
-const LANGUAGE_OPTIONS = [
-  { value: "ko", label: "한국어" },
-  { value: "en", label: "English" },
-  { value: "ja", label: "日本語" },
-];
-
 const DATE_FORMAT_OPTIONS = [
   { value: "YYYY-MM-DD", label: "2026-05-04" },
   { value: "MM/DD/YYYY", label: "05/04/2026" },
@@ -32,6 +27,7 @@ const DATE_FORMAT_OPTIONS = [
 ];
 
 export function GeneralPane() {
+  const t = useI18n();
   const settings = useSettingsStore((s) => s.settings);
   const updateSetting = useSettingsStore((s) => s.updateSetting);
 
@@ -41,41 +37,41 @@ export function GeneralPane() {
 
   return (
     <>
-      <PaneHeader title="General" sub="App-wide preferences." />
+      <PaneHeader title={t("General")} sub={t("App-wide preferences.")} />
 
-      <Section title="Startup">
-        <Row label="Launch at login" hint="Draction starts when you sign in to your Mac.">
+      <Section title={t("Startup")}>
+        <Row label={t("Launch at login")} hint={t("Draction starts when you sign in to your Mac.")}>
           <Switch
-            aria-label="Launch at login"
+            aria-label={t("Launch at login")}
             checked={settings.launch_at_login}
             onCheckedChange={(v) => updateSetting("launch_at_login", v)}
           />
         </Row>
-        <Row label="Show Draky on launch" hint="The desktop overlay appears immediately.">
+        <Row label={t("Show Draky on launch")} hint={t("The desktop overlay appears immediately.")}>
           <Switch
-            aria-label="Show Draky on launch"
+            aria-label={t("Show Draky on launch")}
             checked={settings.show_draky_on_launch}
             onCheckedChange={(v) => updateSetting("show_draky_on_launch", v)}
           />
         </Row>
-        <Row label="Run minimized" hint="Hide the dashboard window; only the overlay stays visible." last>
+        <Row label={t("Run minimized")} hint={t("Hide the dashboard window; only the overlay stays visible.")} last>
           <Switch
-            aria-label="Run minimized"
+            aria-label={t("Run minimized")}
             checked={settings.run_minimized}
             onCheckedChange={(v) => updateSetting("run_minimized", v)}
           />
         </Row>
       </Section>
 
-      <Section title="Appearance">
-        <Row label="Theme" hint="Soft-Pro light is in preview.">
+      <Section title={t("Appearance")}>
+        <Row label={t("Theme")} hint={t("Soft-Pro light is in preview.")}>
           <Select
             value={settings.theme}
-            options={THEME_OPTIONS}
+            options={trOptions(THEME_OPTIONS, t)}
             onChange={(v) => updateSetting("theme", v)}
           />
         </Row>
-        <Row label="Accent color" hint="Used by buttons, switches and Draky's glow.">
+        <Row label={t("Accent color")} hint={t("Used by buttons, switches and Draky's glow.")}>
           <div className="flex gap-1.5">
             {ACCENT_COLORS.map((c, i) => (
               <span
@@ -93,24 +89,27 @@ export function GeneralPane() {
             ))}
           </div>
         </Row>
-        <Row label="Reduce motion" hint="Drops Draky's idle bobbing and most transitions." last>
+        <Row label={t("Reduce motion")} hint={t("Drops Draky's idle bobbing and most transitions.")} last>
           <Switch
-            aria-label="Reduce motion"
+            aria-label={t("Reduce motion")}
             checked={settings.reduce_motion}
             onCheckedChange={(v) => updateSetting("reduce_motion", v)}
           />
         </Row>
       </Section>
 
-      <Section title="Language & region">
-        <Row label="Display language">
+      <Section title={t("Language & region")}>
+        <Row label={t("Display language")}>
           <Select
             value={settings.language}
-            options={LANGUAGE_OPTIONS}
+            options={SUPPORTED_LANGUAGES.map((language) => ({
+              value: language.value,
+              label: language.nativeLabel,
+            }))}
             onChange={(v) => updateSetting("language", v)}
           />
         </Row>
-        <Row label="Date format" last>
+        <Row label={t("Date format")} last>
           <Select
             value={settings.date_format}
             options={DATE_FORMAT_OPTIONS}

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Mutex;
@@ -51,7 +51,9 @@ impl DractionDb {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
-        let db = Self { conn: Mutex::new(conn) };
+        let db = Self {
+            conn: Mutex::new(conn),
+        };
         db.migrate()?;
         Ok(db)
     }
@@ -176,8 +178,7 @@ impl DractionDb {
     pub fn count_runs(&self, status_filter: Option<&str>) -> Result<u32> {
         self.with_conn(|conn| {
             if let Some(status) = status_filter {
-                let mut stmt =
-                    conn.prepare("SELECT COUNT(*) FROM runs WHERE status = ?1")?;
+                let mut stmt = conn.prepare("SELECT COUNT(*) FROM runs WHERE status = ?1")?;
                 Ok(stmt.query_row(params![status], |r| r.get::<_, u32>(0))?)
             } else {
                 let mut stmt = conn.prepare("SELECT COUNT(*) FROM runs")?;
@@ -193,18 +194,15 @@ impl DractionDb {
                         finished_at, error_json, artifacts_json \
                  FROM runs WHERE id = ?1",
             )?;
-            let row = stmt
-                .query_row(params![id], row_to_run)
-                .optional()?;
+            let row = stmt.query_row(params![id], row_to_run).optional()?;
             Ok(row)
         })
     }
 
     pub fn get_event(&self, id: &str) -> Result<Option<EventRow>> {
         self.with_conn(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, time, source_json, files_json FROM events WHERE id = ?1",
-            )?;
+            let mut stmt =
+                conn.prepare("SELECT id, time, source_json, files_json FROM events WHERE id = ?1")?;
             let row = stmt
                 .query_row(params![id], |r| {
                     Ok(EventRow {
@@ -245,6 +243,29 @@ impl DractionDb {
         })
     }
 
+    pub fn clear_history(&self) -> Result<()> {
+        self.with_conn(|conn| {
+            for table in [
+                "artifacts",
+                "run_nodes",
+                "runs",
+                "event_files",
+                "undo_entries",
+                "events",
+            ] {
+                let exists: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                    params![table],
+                    |r| r.get(0),
+                )?;
+                if exists > 0 {
+                    conn.execute(&format!("DELETE FROM {table}"), [])?;
+                }
+            }
+            Ok(())
+        })
+    }
+
     // ── Rules ────────────────────────────────────────────────────────────────
 
     pub fn list_rules(&self) -> Result<Vec<RuleRow>> {
@@ -253,17 +274,18 @@ impl DractionDb {
                 "SELECT id, name, enabled, order_index, when_json, workflow_id \
                  FROM rules ORDER BY order_index ASC",
             )?;
-            let rows = stmt.query_map([], |r| {
-                Ok(RuleRow {
-                    id: r.get(0)?,
-                    name: r.get(1)?,
-                    enabled: r.get::<_, i64>(2)? != 0,
-                    order_index: r.get(3)?,
-                    when_json: r.get(4)?,
-                    workflow_id: r.get(5)?,
-                })
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok(RuleRow {
+                        id: r.get(0)?,
+                        name: r.get(1)?,
+                        enabled: r.get::<_, i64>(2)? != 0,
+                        order_index: r.get(3)?,
+                        when_json: r.get(4)?,
+                        workflow_id: r.get(5)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(rows)
         })
     }
@@ -274,16 +296,18 @@ impl DractionDb {
                 "SELECT id, name, enabled, order_index, when_json, workflow_id \
                  FROM rules WHERE id = ?1",
             )?;
-            Ok(stmt.query_row(params![id], |r| {
-                Ok(RuleRow {
-                    id: r.get(0)?,
-                    name: r.get(1)?,
-                    enabled: r.get::<_, i64>(2)? != 0,
-                    order_index: r.get(3)?,
-                    when_json: r.get(4)?,
-                    workflow_id: r.get(5)?,
+            Ok(stmt
+                .query_row(params![id], |r| {
+                    Ok(RuleRow {
+                        id: r.get(0)?,
+                        name: r.get(1)?,
+                        enabled: r.get::<_, i64>(2)? != 0,
+                        order_index: r.get(3)?,
+                        when_json: r.get(4)?,
+                        workflow_id: r.get(5)?,
+                    })
                 })
-            }).optional()?)
+                .optional()?)
         })
     }
 
@@ -349,32 +373,34 @@ impl DractionDb {
             let mut stmt = conn.prepare(
                 "SELECT id, name, nodes_json, edges_json FROM workflows ORDER BY name ASC",
             )?;
-            let rows = stmt.query_map([], |r| {
-                Ok(WorkflowRow {
-                    id: r.get(0)?,
-                    name: r.get(1)?,
-                    nodes_json: r.get(2)?,
-                    edges_json: r.get(3)?,
-                })
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok(WorkflowRow {
+                        id: r.get(0)?,
+                        name: r.get(1)?,
+                        nodes_json: r.get(2)?,
+                        edges_json: r.get(3)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(rows)
         })
     }
 
     pub fn get_workflow(&self, id: &str) -> Result<Option<WorkflowRow>> {
         self.with_conn(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, name, nodes_json, edges_json FROM workflows WHERE id = ?1",
-            )?;
-            Ok(stmt.query_row(params![id], |r| {
-                Ok(WorkflowRow {
-                    id: r.get(0)?,
-                    name: r.get(1)?,
-                    nodes_json: r.get(2)?,
-                    edges_json: r.get(3)?,
+            let mut stmt = conn
+                .prepare("SELECT id, name, nodes_json, edges_json FROM workflows WHERE id = ?1")?;
+            Ok(stmt
+                .query_row(params![id], |r| {
+                    Ok(WorkflowRow {
+                        id: r.get(0)?,
+                        name: r.get(1)?,
+                        nodes_json: r.get(2)?,
+                        edges_json: r.get(3)?,
+                    })
                 })
-            }).optional()?)
+                .optional()?)
         })
     }
 

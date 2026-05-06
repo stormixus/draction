@@ -4,6 +4,7 @@ import { Dialog, DialogContent } from "./ui/Dialog";
 import { Tabs, TabsList, TabsTriggerPill } from "./ui/Tabs";
 import { queryKeys, useRuns, type Run } from "../lib/query";
 import { useUiStore } from "../stores/uiStore";
+import { useI18n } from "../lib/i18n";
 
 const STATUS_STYLES: Record<string, string> = {
   completed: "bg-success/10 text-success border border-success/30",
@@ -62,6 +63,7 @@ interface RunDetailProps {
 }
 
 function RunDetail({ run, open, onOpenChange }: RunDetailProps) {
+  const t = useI18n();
   const artifacts: Array<{ kind: string; path?: string; url?: string }> =
     run.artifacts_json ? JSON.parse(run.artifacts_json) : [];
   const error = run.error_json ? JSON.parse(run.error_json) : null;
@@ -69,7 +71,7 @@ function RunDetail({ run, open, onOpenChange }: RunDetailProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="Run Detail"
+        title={t("Run Detail")}
         headerSlot={
           <>
             <span className={`h-2 w-2 rounded-full ${STATUS_DOT[run.status] ?? "bg-text-subtle"}`} />
@@ -83,10 +85,10 @@ function RunDetail({ run, open, onOpenChange }: RunDetailProps) {
       >
         <div className="grid grid-cols-2 gap-2 text-sm">
           {[
-            ["Run ID", run.id],
-            ["Event ID", run.event_id],
-            ["Rule ID", run.rule_id],
-            ["Workflow ID", run.workflow_id],
+            [t("Run ID"), run.id],
+            [t("Event ID"), run.event_id],
+            [t("Rule ID"), run.rule_id],
+            [t("Workflow ID"), run.workflow_id],
           ].map(([label, value]) => (
             <div key={label} className="rounded-lg bg-surface-2 p-3">
               <div className="text-xs text-text-subtle mb-1">{label}</div>
@@ -97,31 +99,31 @@ function RunDetail({ run, open, onOpenChange }: RunDetailProps) {
 
         <div className="grid grid-cols-2 gap-2 text-sm">
           <div className="rounded-lg bg-surface-2 p-3">
-            <div className="text-xs text-text-subtle mb-1">Started</div>
+            <div className="text-xs text-text-subtle mb-1">{t("Started")}</div>
             <div className="text-text text-xs">{formatTime(run.started_at)}</div>
           </div>
           {run.finished_at && (
             <div className="rounded-lg bg-surface-2 p-3">
-              <div className="text-xs text-text-subtle mb-1">Finished</div>
+              <div className="text-xs text-text-subtle mb-1">{t("Finished")}</div>
               <div className="text-text text-xs">{formatTime(run.finished_at)}</div>
             </div>
           )}
           <div className="rounded-lg bg-surface-2 p-3">
-            <div className="text-xs text-text-subtle mb-1">Duration</div>
+            <div className="text-xs text-text-subtle mb-1">{t("Duration")}</div>
             <div className="text-text text-xs">{duration(run.started_at, run.finished_at)}</div>
           </div>
         </div>
 
         {run.event?.path && (
           <div className="rounded-lg bg-surface-2 p-3">
-            <div className="text-xs text-text-subtle mb-1">File</div>
+            <div className="text-xs text-text-subtle mb-1">{t("File")}</div>
             <div className="text-text font-mono text-xs break-all">{run.event.path}</div>
           </div>
         )}
 
         {error && (
           <div className="rounded-lg border border-danger/40 bg-danger/10 p-3">
-            <p className="mb-1 text-xs font-medium text-danger">Error</p>
+            <p className="mb-1 text-xs font-medium text-danger">{t("Error")}</p>
             <pre className="overflow-auto text-xs text-danger whitespace-pre-wrap">
               {typeof error === "string" ? error : JSON.stringify(error, null, 2)}
             </pre>
@@ -130,7 +132,7 @@ function RunDetail({ run, open, onOpenChange }: RunDetailProps) {
 
         {artifacts.length > 0 && (
           <div>
-            <p className="mb-2 text-xs font-medium text-text-subtle">Artifacts</p>
+            <p className="mb-2 text-xs font-medium text-text-subtle">{t("Artifacts")}</p>
             <ul className="space-y-1">
               {artifacts.map((a, i) => (
                 <li key={i} className="flex items-center gap-2 text-xs">
@@ -197,6 +199,7 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
 ];
 
 export default function RunsPanel({ baseUrl }: { baseUrl: string }) {
+  const t = useI18n();
   const queryClient = useQueryClient();
   const selectedRunId = useUiStore((s) => s.selectedRunId);
   const openRun = useUiStore((s) => s.openRun);
@@ -229,7 +232,7 @@ export default function RunsPanel({ baseUrl }: { baseUrl: string }) {
                 key === "all" ? runs.length : runs.filter((r) => r.status === key).length;
               return (
                 <TabsTriggerPill key={key} value={key} badge={count}>
-                  {label}
+                  {t(label)}
                 </TabsTriggerPill>
               );
             })}
@@ -238,26 +241,26 @@ export default function RunsPanel({ baseUrl }: { baseUrl: string }) {
             onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.runs })}
             className="rounded px-3 py-1.5 text-xs text-text-subtle transition-colors hover:bg-surface-2 hover:text-text-muted"
           >
-            Refresh
+            {t("Refresh")}
           </button>
         </div>
       </Tabs>
 
       {runsQuery.isError && (
         <div className="mb-3 rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
-          Failed to load runs: {String(runsQuery.error?.message ?? "unknown error")}
+          {t("Failed to load runs:")} {String(runsQuery.error?.message ?? "unknown error")}
         </div>
       )}
 
       {runsQuery.isLoading && runs.length === 0 && (
         <div className="rounded-lg border border-border p-10 text-center text-text-subtle text-sm">
-          Loading runs…
+          {t("Loading runs…")}
         </div>
       )}
 
       {!runsQuery.isLoading && filtered.length === 0 && !runsQuery.isError && (
         <div className="rounded-lg border border-border p-10 text-center text-text-subtle text-sm">
-          No {filter !== "all" ? filter : ""} runs found.
+          {filter === "all" ? t("No runs found.") : `${t("No runs found.")} (${filter})`}
         </div>
       )}
 

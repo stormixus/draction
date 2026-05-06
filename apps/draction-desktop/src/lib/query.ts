@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { authHeaders } from "./settings";
 
 export const queryKeys = {
   runs: ["runs"] as const,
@@ -7,7 +8,10 @@ export const queryKeys = {
 };
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  const res = await fetch(url, {
+    ...init,
+    headers: authHeaders(init?.headers),
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
@@ -77,7 +81,7 @@ export function useHealth(baseUrl: string | null) {
     retry: false,
     queryFn: async () => {
       // We just need to know if the server answers 2xx; treat any 2xx body as healthy.
-      const res = await fetch(`${baseUrl}/api/v1/runs?limit=1`);
+      const res = await fetch(`${baseUrl}/api/v1/runs?limit=1`, { headers: authHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return { ok: true } as const;
     },
@@ -91,7 +95,6 @@ export function useToggleRule(baseUrl: string | null) {
       if (!baseUrl) throw new Error("API base URL not ready");
       await fetchJson<unknown>(`${baseUrl}/api/v1/rules/${id}/enabled`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled }),
       });
     },

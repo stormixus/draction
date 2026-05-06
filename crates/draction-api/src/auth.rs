@@ -23,8 +23,20 @@ pub async fn load_or_create_token(base: &Path) -> Result<String> {
     }
 
     let token = generate_token();
-    let config = Config { token: token.clone() };
+    let config = Config {
+        token: token.clone(),
+    };
     tokio::fs::create_dir_all(base).await?;
     tokio::fs::write(&config_path, serde_json::to_string_pretty(&config)?).await?;
     Ok(token)
+}
+
+pub async fn save_token(base: &Path, token: &str) -> Result<()> {
+    let config_path = base.join("config.json");
+    let config = Config {
+        token: token.to_string(),
+    };
+    tokio::fs::create_dir_all(base).await?;
+    tokio::fs::write(&config_path, serde_json::to_string_pretty(&config)?).await?;
+    Ok(())
 }

@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import RunsPanel from "./components/RunsPanel";
 import RulesPanel from "./components/RulesPanel";
 import { useHealth } from "./lib/query";
-import { setAuthToken } from "./lib/settings";
+import { setApiBaseUrl, setAuthToken } from "./lib/settings";
+import { useI18n } from "./lib/i18n";
 import { useUiStore } from "./stores/uiStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { NavItem } from "./components/settings/NavItem";
@@ -42,7 +44,14 @@ const SETTINGS_ITEMS = [
   { key: "about" as const, icon: <AboutIcon />, label: "About" },
 ];
 
+declare global {
+  interface Window {
+    __dractionOpenSettings?: () => void;
+  }
+}
+
 function App() {
+  const t = useI18n();
   const [baseUrl, setBaseUrl] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
   const activePane = useUiStore((s) => s.activePane);
@@ -52,16 +61,28 @@ function App() {
 
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const settings = useSettingsStore((s) => s.settings);
+  const updateSetting = useSettingsStore((s) => s.updateSetting);
   const overlayVisible = useUiStore((s) => s.overlayVisible);
   const setOverlayVisible = useUiStore((s) => s.setOverlayVisible);
 
   useEffect(() => {
     invoke<number>("get_api_port")
-      .then((port) => setBaseUrl(`http://127.0.0.1:${port}`))
-      .catch(() => setBaseUrl("http://127.0.0.1:9400"));
+      .then((port) => {
+        const nextBaseUrl = `http://127.0.0.1:${port}`;
+        setApiBaseUrl(nextBaseUrl);
+        setBaseUrl(nextBaseUrl);
+      })
+      .catch(() => {
+        const fallbackBaseUrl = "http://127.0.0.1:9400";
+        setApiBaseUrl(fallbackBaseUrl);
+        setBaseUrl(fallbackBaseUrl);
+      });
   }, []);
 
   useEffect(() => {
+    if (!baseUrl) return;
+    setInitialized(false);
+
     // After the API port is known, grab the auth token and load settings
     invoke<string>("get_auth_token")
       .then((token) => {
@@ -73,7 +94,44 @@ function App() {
         return loadSettings();
       })
       .finally(() => setInitialized(true));
-  }, [loadSettings]);
+  }, [baseUrl, loadSettings]);
+
+  useEffect(() => {
+    if (!settings) return;
+    const resolvedTheme =
+      settings.theme === "system"
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light"
+        : settings.theme;
+    document.documentElement.dataset.theme = resolvedTheme;
+    document.documentElement.style.setProperty("--ui-accent", settings.accent_color);
+    document.documentElement.style.setProperty("--ui-focus", settings.accent_color);
+    setOverlayVisible(settings.draky_overlay_visible);
+    invoke("set_overlay_visible", { visible: settings.draky_overlay_visible }).catch(() => {});
+  }, [settings, setOverlayVisible]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    const openSettings = () => {
+      setActivePane("general");
+      window.focus();
+    };
+
+    window.__dractionOpenSettings = openSettings;
+
+    listen("open-settings", openSettings).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+      if (window.__dractionOpenSettings === openSettings) {
+        delete window.__dractionOpenSettings;
+      }
+    };
+  }, [setActivePane]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -86,12 +144,13 @@ function App() {
         e.preventDefault();
         const next = !overlayVisible;
         setOverlayVisible(next);
+        updateSetting("draky_overlay_visible", next);
         invoke("set_overlay_visible", { visible: next }).catch(() => {});
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [overlayVisible, setActivePane, setOverlayVisible]);
+  }, [overlayVisible, setActivePane, setOverlayVisible, updateSetting]);
 
   return (
     <div className="flex min-h-screen bg-bg text-text">
@@ -120,7 +179,7 @@ function App() {
             <NavItem
               key={item.key}
               icon={item.icon}
-              label={item.label}
+              label={t(item.label)}
               active={activePane === item.key}
               onClick={() => setActivePane(item.key)}
             />
@@ -135,7 +194,7 @@ function App() {
             <NavItem
               key={item.key}
               icon={item.icon}
-              label={item.label}
+              label={t(item.label)}
               badge={item.badge}
               active={activePane === item.key}
               draky={item.draky}
@@ -155,7 +214,7 @@ function App() {
               boxShadow: apiConnected ? "0 0 6px var(--color-accent)" : "none",
             }}
           />
-          {apiConnected ? "API connected · 127.0.0.1" : "Disconnected"}
+          {apiConnected ? t("API connected · 127.0.0.1") : t("Disconnected")}
         </div>
       </aside>
 
@@ -163,7 +222,7 @@ function App() {
       <main className="min-w-0 flex-1 overflow-auto p-6">
         {!baseUrl || !initialized || !settings ? (
           <div className="flex items-center justify-center py-16 text-sm text-text-subtle">
-            Initializing…
+            {t("Initializing…")}
           </div>
         ) : (
           <>

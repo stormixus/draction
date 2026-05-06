@@ -1,7 +1,9 @@
 import { Switch } from "./ui/Switch";
 import { useRules, useToggleRule } from "../lib/query";
+import { useI18n } from "../lib/i18n";
 
 export default function RulesPanel({ baseUrl }: { baseUrl: string }) {
+  const t = useI18n();
   const rulesQuery = useRules(baseUrl);
   const toggle = useToggleRule(baseUrl);
   const rules = rulesQuery.data ?? [];
@@ -9,7 +11,7 @@ export default function RulesPanel({ baseUrl }: { baseUrl: string }) {
   if (rulesQuery.isLoading && rules.length === 0) {
     return (
       <div className="rounded-lg border border-border p-10 text-center text-text-subtle text-sm">
-        Loading rules…
+        {t("Loading rules…")}
       </div>
     );
   }
@@ -18,13 +20,13 @@ export default function RulesPanel({ baseUrl }: { baseUrl: string }) {
     <div>
       {rulesQuery.isError && (
         <div className="mb-3 rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
-          Failed to load rules: {String(rulesQuery.error?.message ?? "unknown error")}
+          {t("Failed to load rules:")} {String(rulesQuery.error?.message ?? "unknown error")}
         </div>
       )}
 
       {!rulesQuery.isLoading && rules.length === 0 && !rulesQuery.isError && (
         <div className="rounded-lg border border-border p-10 text-center text-text-subtle text-sm">
-          No rules configured.
+          {t("No rules configured.")}
         </div>
       )}
 

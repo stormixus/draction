@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 import { Switch } from "../../ui/Switch";
 import { PaneHeader } from "../PaneHeader";
 import { Row } from "../Row";
@@ -5,7 +7,9 @@ import { Section } from "../Section";
 import { Select } from "../Select";
 import { Btn } from "../Btn";
 import { Chip } from "../Chip";
+import { DrakySprite } from "../DrakySprite";
 import { useSettingsStore } from "../../../stores/settingsStore";
+import { trOptions, useI18n } from "../../../lib/i18n";
 
 const DRAKY_PERSONALITY_OPTIONS = [
   { value: "friendly", label: "Friendly (default)" },
@@ -29,8 +33,11 @@ function widthToSize(pct: string): string {
 }
 
 export function DrakyPane() {
+  const t = useI18n();
   const settings = useSettingsStore((s) => s.settings);
   const updateSetting = useSettingsStore((s) => s.updateSetting);
+  const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const [previewState, setPreviewState] = useState<"idle" | "wave" | "burp">("idle");
 
   if (!settings) return null;
 
@@ -40,10 +47,9 @@ export function DrakyPane() {
     <>
       <PaneHeader
         title="Draky"
-        sub="Your desktop fairy. Tune how she looks, where she lives and how chatty she is."
+        sub={t("Your desktop fairy. Tune how she looks, where she lives and how chatty she is.")}
       />
 
-      {/* Hero: placeholder preview */}
       <div
         className="mb-6 flex gap-[18px] rounded-xl border border-border p-[18px]"
         style={{
@@ -57,57 +63,74 @@ export function DrakyPane() {
               "radial-gradient(circle at 50% 60%, rgba(45,212,191,.25), transparent 60%)",
           }}
         >
-          {/* Placeholder for Draky sprite */}
-          <div
-            className="rounded-full"
-            style={{
-              width: 150,
-              height: 150,
-              background: "radial-gradient(circle at 40% 40%, #2dd4bf, #0f766e)",
-              boxShadow: "0 0 40px rgba(45,212,191,.3)",
-            }}
+          <DrakySprite
+            state={previewState}
+            size={150}
+            paused={!settings.draky_idle_behaviors || settings.reduce_motion}
           />
         </div>
         <div className="flex flex-1 flex-col justify-center gap-2.5">
           <div className="flex items-center gap-2">
             <h3 className="m-0 text-lg font-semibold">Draky</h3>
-            <Chip tone="draky">Idle · awake</Chip>
+            <Chip tone="draky">{t("Idle · awake")}</Chip>
           </div>
           <p className="m-0 text-[13px] leading-relaxed text-text-muted">
-            A tiny teal dragon that lives at the corner of your screen. Drop files
-            onto her — she eats them, sorts them, and burps a little log.
+            {t("A tiny teal dragon that lives at the corner of your screen. Drop files onto her — she eats them, sorts them, and burps a little log.")}
           </p>
           <div className="mt-1 flex gap-2">
-            <Btn>Wave hello</Btn>
-            <Btn variant="ghost">Reset position</Btn>
+            <Btn
+              onClick={() => {
+                setPreviewState("wave");
+                window.setTimeout(() => setPreviewState("idle"), 900);
+              }}
+            >
+              {t("Wave hello")}
+            </Btn>
+            <Btn
+              variant="ghost"
+              onClick={() =>
+                updateSettings({
+                  draky_size: "medium",
+                  draky_overlay_visible: true,
+                  draky_snap_to_corner: true,
+                })
+              }
+            >
+              {t("Reset position")}
+            </Btn>
           </div>
         </div>
       </div>
 
-      <Section title="Presence">
-        <Row label="Show overlay" hint="Hide Draky entirely; ingests still work via menu bar.">
+      <Section title={t("Presence")}>
+        <Row label={t("Show overlay")} hint={t("Hide Draky entirely; ingests still work via menu bar.")}>
           <Switch
-            aria-label="Show overlay"
-            defaultChecked
+            aria-label={t("Show overlay")}
+            checked={settings.draky_overlay_visible}
+            onCheckedChange={(v) => {
+              updateSetting("draky_overlay_visible", v);
+              invoke("set_overlay_visible", { visible: v }).catch(() => {});
+            }}
             className="data-[state=checked]:bg-draky"
           />
         </Row>
-        <Row label="Always on top">
+        <Row label={t("Always on top")}>
           <Switch
-            aria-label="Always on top"
+            aria-label={t("Always on top")}
             checked={settings.draky_always_on_top}
             onCheckedChange={(v) => updateSetting("draky_always_on_top", v)}
             className="data-[state=checked]:bg-draky"
           />
         </Row>
-        <Row label="Snap to corner" hint="Lock Draky to whichever corner you drag her to.">
+        <Row label={t("Snap to corner")} hint={t("Lock Draky to whichever corner you drag her to.")}>
           <Switch
-            aria-label="Snap to corner"
-            defaultChecked
+            aria-label={t("Snap to corner")}
+            checked={settings.draky_snap_to_corner}
+            onCheckedChange={(v) => updateSetting("draky_snap_to_corner", v)}
             className="data-[state=checked]:bg-draky"
           />
         </Row>
-        <Row label="Size" hint="Affects the overlay window only — not the dashboard preview." last>
+        <Row label={t("Size")} hint={t("Affects the overlay window only — not the dashboard preview.")} last>
           <div className="flex items-center gap-2.5">
             <span
               className="cursor-pointer text-[11px] text-text-subtle hover:text-text"
@@ -143,35 +166,38 @@ export function DrakyPane() {
         </Row>
       </Section>
 
-      <Section title="Personality">
-        <Row label="Voice" hint="How chatty Draky's toasts and tooltips are.">
+      <Section title={t("Personality")}>
+        <Row label={t("Voice")} hint={t("How chatty Draky's toasts and tooltips are.")}>
           <Select
             value={settings.draky_personality}
-            options={DRAKY_PERSONALITY_OPTIONS}
+            options={trOptions(DRAKY_PERSONALITY_OPTIONS, t)}
             onChange={(v) => updateSetting("draky_personality", v)}
           />
         </Row>
-        <Row label="Burp on success" hint="The cute exhale animation after eating files.">
+        <Row label={t("Burp on success")} hint={t("The cute exhale animation after eating files.")}>
           <Switch
-            aria-label="Burp on success"
-            defaultChecked
+            aria-label={t("Burp on success")}
+            checked={settings.draky_burp_on_success}
+            onCheckedChange={(v) => updateSetting("draky_burp_on_success", v)}
             className="data-[state=checked]:bg-draky"
           />
         </Row>
-        <Row label="Idle behaviors" hint="Yawn, stretch, look at the cursor when bored." last>
+        <Row label={t("Idle behaviors")} hint={t("Yawn, stretch, look at the cursor when bored.")} last>
           <Switch
-            aria-label="Idle behaviors"
-            defaultChecked
+            aria-label={t("Idle behaviors")}
+            checked={settings.draky_idle_behaviors}
+            onCheckedChange={(v) => updateSetting("draky_idle_behaviors", v)}
             className="data-[state=checked]:bg-draky"
           />
         </Row>
       </Section>
 
-      <Section title="File reactions">
-        <Row label="Show file-type munch" hint="Different chew animation per common type." last>
+      <Section title={t("File reactions")}>
+        <Row label={t("Show file-type munch")} hint={t("Different chew animation per common type.")} last>
           <Switch
-            aria-label="Show file-type munch"
-            defaultChecked
+            aria-label={t("Show file-type munch")}
+            checked={settings.draky_file_type_munch}
+            onCheckedChange={(v) => updateSetting("draky_file_type_munch", v)}
             className="data-[state=checked]:bg-draky"
           />
         </Row>

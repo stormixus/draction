@@ -9,6 +9,7 @@ interface SettingsState {
 
   loadSettings: () => Promise<void>;
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => Promise<void>;
+  updateSettings: (partial: Partial<Settings>) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -38,6 +39,20 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({ settings: updated });
     } catch (err) {
       // Revert on failure
+      set({ settings: current, error: String(err) });
+    }
+  },
+
+  updateSettings: async (partial: Partial<Settings>) => {
+    const current = get().settings;
+    if (!current) return;
+
+    set({ settings: { ...current, ...partial } });
+
+    try {
+      const updated = await updateSettings(partial);
+      set({ settings: updated });
+    } catch (err) {
       set({ settings: current, error: String(err) });
     }
   },
